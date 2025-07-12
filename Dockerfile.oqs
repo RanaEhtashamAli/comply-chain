@@ -1,0 +1,38 @@
+FROM python:3.10-slim
+
+# Install build dependencies for liboqs
+RUN apt-get update && apt-get install -y \
+    cmake \
+    ninja-build \
+    git \
+    python3-dev \
+    libssl-dev \
+    build-essential \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone and build liboqs-python
+RUN git clone https://github.com/open-quantum-safe/liboqs-python.git \
+    && cd liboqs-python \
+    && git submodule update --init --recursive \
+    && python3 setup.py build \
+    && python3 setup.py install
+
+# Install ComplyChain with quantum support
+RUN pip install complychain[quantum]
+
+# Copy audit server
+COPY complychain/audit_server.py .
+
+# Configure volume for persistent audit chain
+VOLUME /audit_chain
+
+# Set environment variables for GLBA compliance
+ENV GLBA_COMPLIANCE_MODE=strict
+ENV AUDIT_CHAIN_DIR=/audit_chain
+ENV QUANTUM_SAFE_ENABLED=true
+
+# Expose audit server port
+EXPOSE 8080
+
+CMD ["python", "audit_server.py", "--data-dir=/audit_chain", "--quantum-safe"] 

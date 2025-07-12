@@ -1,0 +1,91 @@
+# Multi-stage Dockerfile for ComplyChain
+# Build stage
+FROM python:3.11-slim as builder
+
+# Build arguments
+ARG COMPLIANCE_MODE=enabled
+ARG QUANTUM_SAFE_ENABLED=true
+ARG KEY_ROTATION_ENABLED=false
+
+# Set environment variables
+ENV COMPLYCHAIN_COMPLIANCE_MODE=${COMPLIANCE_MODE}
+ENV COMPLYCHAIN_QUANTUM_SAFE_ENABLED=${QUANTUM_SAFE_ENABLED}
+ENV COMPLYCHAIN_KEY_ROTATION_ENABLED=${KEY_ROTATION_ENABLED}
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libffi-dev \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Production stage
+FROM python:3.11-slim as production
+
+# Build arguments (for runtime configuration)
+ARG COMPLIANCE_MODE=enabled
+ARG QUANTUM_SAFE_ENABLED=true
+ARG KEY_ROTATION_ENABLED=false
+
+# Set environment variables
+ENV COMPLYCHAIN_COMPLIANCE_MODE=${COMPLIANCE_MODE}
+ENV COMPLYCHAIN_QUANTUM_SAFE_ENABLED=${QUANTUM_SAFE_ENABLED}
+ENV COMPLYCHAIN_KEY_ROTATION_ENABLED=${KEY_ROTATION_ENABLED}
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    libffi7 \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd -r complychain && \
+    useradd -r -g complychain -m -d /app complychain
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code
+COPY complychain/ ./complychain/
+COPY setup.py .
+COPY config.yaml .
+
+# Install the package
+RUN pip install -e .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/audit_chain /app/keys /app/models /app/logs && \
+    chown -R complychain:complychain /app
+
+# Switch to non-root user
+USER complychain
+
+# Expose port for audit server
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "from complychain.audit_system import GLBAAuditor; GLBAAuditor().is_operational()" || exit 1
+
+# Default command
+CMD ["python", "-m", "complychain.cli_enhanced", "--help"]
+
+# Labels for metadata
+LABEL maintainer="ComplyChain Team"
+LABEL version="1.0.0"
+LABEL description="Enterprise-grade GLBA compliance toolkit with quantum-safe cryptography"
+LABEL compliance="GLBA-314.4"
+LABEL security="FIPS-140-3" 

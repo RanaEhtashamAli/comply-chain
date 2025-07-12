@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+title: "ComplyChain: Enterprise-Grade GLBA Compliance Toolkit with Quantum-Safe Cryptography"
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Ali"
+    given-names: "Rana Ehtasham"
+    email: "ranaehtashamali1@gmail.com"
+    orcid: "https://orcid.org/0000-0000-0000-0000"
+repository-code: "https://github.com/RanaEhtashamAli/comply-chain"
+url: "https://github.com/RanaEhtashamAli/comply-chain"
+abstract: "ComplyChain is an enterprise-grade toolkit for GLBA (Gramm-Leach-Bliley Act) compliance with quantum-safe cryptography. It provides comprehensive audit capabilities, threat scanning, and cryptographic operations using NIST-approved post-quantum algorithms like Dilithium3, with automatic fallback to RSA-4096 for maximum compatibility."
+keywords:
+  - "glba"
+  - "compliance"
+  - "cryptography"
+  - "quantum-safe"
+  - "audit"
+  - "fintech"
+  - "regtech"
+  - "dilithium3"
+  - "nist"
+  - "fips"
+  - "financial"
+  - "security"
+license: "Apache-2.0"
+version: "1.0.0"
+date-released: 2025-01-27
+repository-artifact: "https://pypi.org/project/complychain/"
+identifiers:
+  - type: "doi"
+    value: "10.5281/zenodo.0000000"
+  - type: "url"
+    value: "https://github.com/RanaEhtashamAli/comply-chain" 

@@ -1,0 +1,27 @@
+{
+  "feature_names": [
+    "amount",
+    "log_amount",
+    "normalized_amount",
+    "time_of_day",
+    "day_of_week",
+    "day_of_month",
+    "latitude",
+    "longitude",
+    "account_age",
+    "transaction_count",
+    "avg_amount",
+    "is_high_value",
+    "is_cross_border",
+    "is_wire_transfer",
+    "is_new_recipient",
+    "is_after_hours"
+  ],
+  "metrics": {
+    "training_samples": 3,
+    "anomaly_ratio": 0.3333333333333333,
+    "avg_anomaly_score": -0.38757016198533495
+  },
+  "model_type": "IsolationForest",
+  "scaler_type": "StandardScaler"
+}

@@ -1,0 +1,224 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "complychain"
+version = "1.0.0"
+description = "Enterprise-grade GLBA compliance toolkit with quantum-safe cryptography"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Rana Ehtasham Ali", email = "ranaehtashamali1@gmail.com"}
+]
+maintainers = [
+    {name = "Rana Ehtasham Ali", email = "ranaehtashamali1@gmail.com"}
+]
+keywords = ["glba", "compliance", "cryptography", "quantum-safe", "audit", "fintech", "regtech"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Topic :: Security :: Cryptography",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Environment :: Console",
+    "Framework :: Pytest",
+    "Typing :: Typed",
+]
+requires-python = ">=3.9,<4"
+dependencies = [
+    "scikit-learn>=1.3.0",
+    "reportlab>=4.0.0",
+    "click>=8.0.0",
+    "cryptography>=41.0.0",
+    "joblib>=1.3.0",
+    "numpy>=1.24.0",
+    "requests>=2.31.0",
+    "pyyaml>=6.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "pqcrypto (>=0.3.4,<0.4.0)",
+    "PyPDF2>=3.0.0",
+]
+
+[project.optional-dependencies]
+quantum = [
+    # liboqs-python is not on PyPI, install manually or use Docker
+    # "liboqs-python>=0.7.2",
+]
+pqcrypto = [
+    "pqcrypto>=0.3.0",
+]
+legacy = [
+    "pqcrypto>=0.3.0",
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "coverage-badge>=1.1.0",
+]
+test = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pytest-mock>=3.10.0",
+]
+docs = [
+    "sphinx>=6.0.0",
+    "sphinx-rtd-theme>=1.2.0",
+]
+
+[project.scripts]
+complychain = "complychain.cli_enhanced:app"
+
+[project.urls]
+Homepage = "https://github.com/RanaEhtashamAli/comply-chain"
+Documentation = "https://complychain.readthedocs.io"
+Repository = "https://github.com/RanaEhtashamAli/comply-chain"
+"Bug Tracker" = "https://github.com/RanaEhtashamAli/comply-chain/issues"
+"Security Policy" = "https://github.com/RanaEhtashamAli/comply-chain/security/policy"
+"Release Notes" = "https://github.com/RanaEhtashamAli/comply-chain/releases"
+"Funding" = "https://github.com/sponsors/RanaEhtashamAli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["complychain*"]
+
+[tool.setuptools.package-data]
+complychain = ["py.typed"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long, handled by black
+    "B008",  # do not perform function calls in argument defaults
+    "C901",  # too complex
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401"]
+"tests/**/*" = ["B011"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "cryptography.*",
+    "pqcrypto.*",
+    "sklearn.*",
+    "joblib.*",
+    "typer.*",
+    "rich.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["complychain/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "--disable-warnings",
+    "--color=yes",
+    "--cov=complychain",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+]
+markers = [
+    "crypto: Cryptographic operations tests",
+    "compliance: GLBA compliance tests",
+    "performance: Performance and benchmark tests",
+    "audit: Audit system tests",
+    "cli: Command line interface tests",
+    "integration: Integration tests",
+    "unit: Unit tests",
+    "slow: Slow running tests",
+    "security: Security-focused tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["complychain"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/venv/*",
+    "*/env/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+] 
