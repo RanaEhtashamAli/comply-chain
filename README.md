@@ -60,6 +60,16 @@ ComplyChain supports configuration via environment variables. The most important
 | `COMPLYCHAIN_LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | No | `INFO` |
 | `COMPLYCHAIN_QUANTUM_SAFE_ENABLED` | Enable quantum-safe cryptography | No | `true` |
 | `COMPLYCHAIN_COMPLIANCE_MODE` | Compliance mode (enabled/strict) | No | `enabled` |
+| `COMPLYCHAIN_TEST_MODE` | Enable test mode for faster performance | No | `0` |
+| `COMPLYCHAIN_KEY_ROTATION_ENABLED` | Enable automatic key rotation | No | `false` |
+
+**Docker-specific variables:**
+| Variable | Purpose | Required | Default |
+|----------|---------|----------|---------|
+| `QUANTUM_SAFE_ENABLED` | Docker quantum-safe flag | No | `true` |
+| `GLBA_COMPLIANCE_MODE` | Docker GLBA compliance mode | No | `strict` |
+| `COMPLIANCE_MODE` | Docker compliance mode | No | `enabled` |
+| `KEY_ROTATION_ENABLED` | Docker key rotation flag | No | `false` |
 
 **Quick Setup:**
 ```bash
@@ -69,6 +79,7 @@ export COMPLYCHAIN_FINCEN_API_KEY="your_fincen_api_key"
 # Optional: Customize behavior
 export COMPLYCHAIN_LOG_LEVEL="DEBUG"
 export COMPLYCHAIN_QUANTUM_SAFE_ENABLED="true"
+export COMPLYCHAIN_TEST_MODE="1"  # For faster test execution
 ```
 
 ### Installation
