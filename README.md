@@ -2,6 +2,14 @@
 
 **Enterprise-Grade GLBA §314.4 Compliance Toolkit with Quantum-Safe Cryptography**
 
+> 🚀 **ComplyChain** is an open-source GLBA §314.4 compliance toolkit featuring post-quantum cryptography (Dilithium3), real-time ML threat detection, blockchain-style audit trails, and automated reporting — at 90% lower cost than legacy solutions.
+
+- 📦 PyPI: [`pip install complychain`](https://pypi.org/project/complychain/)
+- 📄 [White Paper (PDF)](./docs/ComplyChain%20White%20Paper.pdf)
+- 🔐 Quantum-Safe | GLBA §314.4 | FIPS 203 | FinCEN Integrated
+- 🌐 GitHub: [github.com/RanaEhtashamAli/comply-chain](https://github.com/RanaEhtashamAli/comply-chain)
+
+
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![GLBA](https://img.shields.io/badge/GLBA-§314.4-green.svg)](https://www.ftc.gov/business-guidance/privacy-security/gramm-leach-bliley-act)
