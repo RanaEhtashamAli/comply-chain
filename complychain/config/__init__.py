@@ -6,6 +6,7 @@ with singleton pattern and caching support.
 """
 
 import os
+import threading
 import yaml
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -13,15 +14,18 @@ from functools import lru_cache
 
 
 class ConfigManager:
-    """Singleton configuration manager for ComplyChain."""
-    
+    """Singleton configuration manager for ComplyChain. Thread-safe."""
+
     _instance = None
     _config = None
     _config_file = None
-    
+    _class_lock = threading.Lock()
+
     def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super(ConfigManager, cls).__new__(cls)
+        with cls._class_lock:
+            if cls._instance is None:
+                cls._instance = super(ConfigManager, cls).__new__(cls)
+                cls._instance._lock = threading.Lock()
         return cls._instance
     
     def __init__(self):
@@ -120,52 +124,34 @@ class ConfigManager:
                 base[key] = value
     
     def get(self, key: str, default: Any = None) -> Any:
-        """
-        Get configuration value by key (dot notation supported).
-        
-        Args:
-            key: Configuration key (e.g., "compliance.mode")
-            default: Default value if key not found
-            
-        Returns:
-            Configuration value
-        """
-        if self._config is None:
-            return default
-            
-        keys = key.split('.')
-        value = self._config
-        
-        try:
-            for k in keys:
-                if isinstance(value, dict):
-                    value = value[k]
-                else:
-                    return default
-            return value
-        except (KeyError, TypeError):
-            return default
-    
-    def set(self, key: str, value: Any):
-        """
-        Set configuration value by key (dot notation supported).
-        
-        Args:
-            key: Configuration key (e.g., "compliance.mode")
-            value: Value to set
-        """
-        if self._config is None:
-            self._load_default_config()
-            
-        keys = key.split('.')
-        config = self._config
-        
-        for k in keys[:-1]:
-            if k not in config or not isinstance(config[k], dict):
-                config[k] = {}
-            config = config[k]
-        
-        config[keys[-1]] = value
+        """Get configuration value by dot-notation key."""
+        with self._lock:
+            if self._config is None:
+                return default
+            keys = key.split('.')
+            value = self._config
+            try:
+                for k in keys:
+                    if isinstance(value, dict):
+                        value = value[k]
+                    else:
+                        return default
+                return value
+            except (KeyError, TypeError):
+                return default
+
+    def set(self, key: str, value: Any) -> None:
+        """Set configuration value by dot-notation key."""
+        with self._lock:
+            if self._config is None:
+                self._load_default_config()
+            keys = key.split('.')
+            config = self._config
+            for k in keys[:-1]:
+                if k not in config or not isinstance(config[k], dict):
+                    config[k] = {}
+                config = config[k]
+            config[keys[-1]] = value
     
     def save_config(self, config_file: Optional[Path] = None):
         """

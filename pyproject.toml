@@ -225,5 +225,6 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
+    "pyotp>=2.9.0",
     "pytest>=8.4.2",
 ]

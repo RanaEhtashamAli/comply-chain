@@ -5,6 +5,7 @@ import uuid
 import shutil
 import logging
 import tempfile
+import threading
 from hashlib import sha256
 from datetime import datetime
 from pathlib import Path
@@ -124,6 +125,7 @@ class GLBAAuditor:
     """
 
     def __init__(self, chain_dir: Path = None):
+        self._lock = threading.Lock()
         self.audit_log = []
         self.merkle_tree = SimpleMerkleTree(hashfunc=sha256)
         self.chain_hash = "0" * 64  # Genesis hash
@@ -197,28 +199,29 @@ class GLBAAuditor:
     def log_transaction(self, tx_data: dict, signature: bytes) -> str:
         """
         Append a transaction to the Merkle-chained audit log (§314.4(c)(8)).
-        Returns the audit entry ID.
+        Returns the audit entry ID.  Thread-safe.
         """
-        tx_bytes = json.dumps(tx_data, sort_keys=True).encode()
-        self.merkle_tree.append(tx_bytes)
+        with self._lock:
+            tx_bytes = json.dumps(tx_data, sort_keys=True).encode()
+            self.merkle_tree.append(tx_bytes)
 
-        audit_id = str(uuid.uuid4())
-        sig_hex = signature.hex() if isinstance(signature, bytes) else signature
-        new_hash = sha256(
-            f"{self.chain_hash}{self.merkle_tree.merkle_root}{sig_hex}".encode()
-        ).hexdigest()
+            audit_id = str(uuid.uuid4())
+            sig_hex = signature.hex() if isinstance(signature, bytes) else signature
+            new_hash = sha256(
+                f"{self.chain_hash}{self.merkle_tree.merkle_root}{sig_hex}".encode()
+            ).hexdigest()
 
-        entry = {
-            "id": audit_id,
-            "tx": tx_data,
-            "sig": signature,
-            "prev_hash": self.chain_hash,
-            "merkle_root": self.merkle_tree.merkle_root,
-            "hash": new_hash,
-            "timestamp": datetime.now().isoformat(),
-        }
-        self.audit_log.append(entry)
-        self.chain_hash = new_hash
+            entry = {
+                "id": audit_id,
+                "tx": tx_data,
+                "sig": signature,
+                "prev_hash": self.chain_hash,
+                "merkle_root": self.merkle_tree.merkle_root,
+                "hash": new_hash,
+                "timestamp": datetime.now().isoformat(),
+            }
+            self.audit_log.append(entry)
+            self.chain_hash = new_hash
 
         self._save_chain()
         return audit_id

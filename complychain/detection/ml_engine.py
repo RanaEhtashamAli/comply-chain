@@ -7,6 +7,7 @@ and other algorithms for GLBA compliance monitoring.
 
 import json
 import logging
+import threading
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 import numpy as np
@@ -17,6 +18,7 @@ from sklearn.metrics import precision_recall_fscore_support, roc_auc_score
 
 from ..exceptions import ModelTrainingError, ThreatScanException
 from ..config.logging_config import get_logger
+from ..constants import ML_CONTAMINATION, ML_N_ESTIMATORS, ML_RANDOM_STATE
 
 logger = get_logger(__name__)
 
@@ -33,12 +35,15 @@ class MLEngine:
         """
         self.model_path = Path(model_path) if model_path else Path("./models")
         self.model_path.mkdir(parents=True, exist_ok=True)
-        
+
+        self._lock = threading.RLock()
+
         self.model: Optional[IsolationForest] = None
         self.scaler: Optional[StandardScaler] = None
         self.feature_names: List[str] = []
         self.metrics: Dict[str, float] = {}
-        
+        self._is_fitted: bool = False
+
         # Load existing model if available
         self._load_model()
     
@@ -52,13 +57,14 @@ class MLEngine:
             try:
                 self.model = joblib.load(model_file)
                 self.scaler = joblib.load(scaler_file)
-                
+
                 if metadata_file.exists():
                     with open(metadata_file, 'r') as f:
                         metadata = json.load(f)
                         self.feature_names = metadata.get('feature_names', [])
                         self.metrics = metadata.get('metrics', {})
-                
+
+                self._is_fitted = True
                 logger.info("Loaded existing ML model and scaler")
             except Exception as e:
                 logger.warning(f"Failed to load existing model: {e}")
@@ -69,9 +75,9 @@ class MLEngine:
     def _initialize_new_model(self) -> None:
         """Initialize new model and scaler."""
         self.model = IsolationForest(
-            contamination=0.1,
-            random_state=42,
-            n_estimators=100
+            contamination=ML_CONTAMINATION,
+            random_state=ML_RANDOM_STATE,
+            n_estimators=ML_N_ESTIMATORS,
         )
         self.scaler = StandardScaler()
         logger.info("Initialized new ML model")
@@ -148,57 +154,52 @@ class MLEngine:
         """
         if not training_data:
             raise ModelTrainingError("No training data provided")
-        
+
         logger.info(f"Training ML model on {len(training_data)} transactions")
-        
-        # Extract features from training data
+
         X_train = []
         for transaction in training_data:
             features = self._extract_features(transaction)
             X_train.append(features.flatten())
-        
         X_train = np.array(X_train)
-        
-        # Update feature names
-        self.feature_names = [
+
+        feature_names = [
             'amount', 'log_amount', 'normalized_amount',
             'time_of_day', 'day_of_week', 'day_of_month',
             'latitude', 'longitude',
             'account_age', 'transaction_count', 'avg_amount',
             'is_high_value', 'is_cross_border', 'is_wire_transfer',
-            'is_new_recipient', 'is_after_hours'
+            'is_new_recipient', 'is_after_hours',
         ]
-        
-        # Fit scaler and transform data
-        if self.scaler is None:
-            raise ModelTrainingError("Scaler not initialized")
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        
-        # Train model
-        if self.model is None:
-            raise ModelTrainingError("Model not initialized")
-        self.model.fit(X_train_scaled)
-        
-        # Calculate training metrics
-        train_predictions = self.model.predict(X_train_scaled)
-        train_scores = self.model.score_samples(X_train_scaled)
-        
-        metrics = {
+
+        with self._lock:
+            if self.scaler is None:
+                raise ModelTrainingError("Scaler not initialized")
+            X_train_scaled = self.scaler.fit_transform(X_train)
+
+            if self.model is None:
+                raise ModelTrainingError("Model not initialized")
+            self.model.fit(X_train_scaled)
+            self.feature_names = feature_names
+
+            train_predictions = self.model.predict(X_train_scaled)
+            train_scores = self.model.score_samples(X_train_scaled)
+
+        metrics: Dict[str, float] = {
             'training_samples': len(training_data),
-            'anomaly_ratio': np.mean(train_predictions == -1),
-            'avg_anomaly_score': np.mean(train_scores),
+            'anomaly_ratio': float(np.mean(train_predictions == -1)),
+            'avg_anomaly_score': float(np.mean(train_scores)),
         }
-        
-        # Calculate validation metrics if provided
+
         if validation_data:
             val_metrics = self._calculate_validation_metrics(validation_data)
             metrics.update(val_metrics)
-        
-        self.metrics = metrics
-        
-        # Save model and metadata
+
+        with self._lock:
+            self.metrics = metrics
+            self._is_fitted = True
+
         self._save_model()
-        
         logger.info(f"Training completed. Metrics: {metrics}")
         return metrics
     
@@ -252,16 +253,17 @@ class MLEngine:
         Returns:
             Tuple of (is_anomaly, anomaly_score)
         """
-        if self.model is None or self.scaler is None:
-            raise ThreatScanException("ML model not trained")
-        
-        features = self._extract_features(transaction)
-        features_scaled = self.scaler.transform(features)
-        
-        prediction = self.model.predict(features_scaled)[0]
-        score = self.model.score_samples(features_scaled)[0]
-        
-        is_anomaly = prediction == -1
+        with self._lock:
+            if self.model is None or self.scaler is None or not self._is_fitted:
+                raise ThreatScanException("ML model not trained — call train() first")
+
+            features = self._extract_features(transaction)
+            features_scaled = self.scaler.transform(features)
+
+            prediction = self.model.predict(features_scaled)[0]
+            score = float(self.model.score_samples(features_scaled)[0])
+
+        is_anomaly = bool(prediction == -1)
         return is_anomaly, score
     
     def _save_model(self) -> None:
@@ -295,7 +297,7 @@ class MLEngine:
         """Get information about the current model."""
         return {
             'model_path': str(self.model_path),
-            'is_trained': self.model is not None,
+            'is_trained': self._is_fitted,
             'feature_count': len(self.feature_names),
             'feature_names': self.feature_names,
             'metrics': self.metrics,
