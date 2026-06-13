@@ -1,502 +1,463 @@
-from sklearn.ensemble import IsolationForest
+import os
+import time
+import logging
+import xml.etree.ElementTree as ET
+from typing import Dict, List, Set
+
 import numpy as np
 import requests
-import json
-from typing import Set, Dict, List
-import time
-import os
+from sklearn.ensemble import IsolationForest
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityError(Exception):
-    """Security violation in training data detection"""
+    """Security violation detected in training data."""
     pass
 
 
 class GLBAScanner:
     """
-    Real-time transaction scanner implementing GLBA §314.4(c)(1) requirements.
-    Sources: OFAC, Interpol, FinCEN, FinCEN fraud patterns, GLBA requirements.
-    """
-    def __init__(self):
-        self.model = IsolationForest(contamination='auto', random_state=42)
-        self.is_trained = False
-        # GLBA §314.4(c)(1): Risk assessment framework
-        self.glb_risk_factors = {
-            'high_value_tx': 25,  # USD 10,000+ threshold (FinCEN requirement)
-            'cross_border': 15,   # International transfers
-            'new_beneficiary': 20, # First-time recipients
-            'sanctioned_entities': 100, # OFAC/UNSC matches
-            'pep_exposure': 50,   # Politically exposed persons
-            'structuring': 75,    # Structuring detection (FinCEN)
-            'currency_transaction': 30, # Currency transaction reporting
-            'wire_transfer': 20,  # Wire transfer monitoring
-        }
-        
-        # FinCEN API configuration
-        self.fincen_api_url = "https://api.fincen.gov"
-        self.fincen_timeout = 1  # Reduced timeout for performance
-        self.sanction_cache = set()
-        self.cache_expiry = 3600  # 1 hour cache
-        self.last_cache_update = 0
-        self.test_mode = os.environ.get("COMPLYCHAIN_TEST_MODE", "0") == "1"
+    Real-time transaction scanner implementing:
+      - §314.4(c)(8): Activity monitoring and anomaly detection
+      - §314.4(c)(1): Access control enforcement (device fingerprinting)
+      - §314.4(b):    Risk assessment framework
+      - §314.4(d):    Continuous testing and monitoring
 
-    def train_model(self, samples: list):
+    Sources: OFAC SDN, UNSC consolidated, UK HMT, FinCEN BSA.
+    """
+
+    # FinCEN / BSA USD thresholds
+    CTR_THRESHOLD = 10_000    # Currency Transaction Report
+    SAR_THRESHOLD = 5_000     # Suspicious Activity Report
+    WIRE_THRESHOLD = 3_000    # Wire transfer monitoring
+
+    def __init__(self):
+        self._basic_model = IsolationForest(contamination='auto', random_state=42)
+        self._basic_trained = False
+
+        # §314.4(b) risk factor weights
+        self.glb_risk_factors = {
+            'high_value_tx': 25,
+            'cross_border': 15,
+            'new_beneficiary': 20,
+            'sanctioned_entities': 100,
+            'pep_exposure': 50,
+            'structuring': 75,
+            'currency_transaction': 30,
+            'wire_transfer': 20,
+        }
+
+        # Sanctions cache
+        self.sanction_cache: Set[str] = set()
+        self.cache_expiry = 3600
+        self.last_cache_update = 0.0
+        self.fincen_timeout = 10
+        self.test_mode = os.environ.get('COMPLYCHAIN_TEST_MODE', '0') == '1'
+
+        # Advanced ML engine (uses persisted model if available)
+        self._ml_engine = None
+        self._use_advanced_ml = False
+        self._init_ml_engine()
+
+    def _init_ml_engine(self) -> None:
+        try:
+            from .detection.ml_engine import MLEngine
+            engine = MLEngine()
+            if engine.model is not None and engine.scaler is not None:
+                self._ml_engine = engine
+                self._use_advanced_ml = True
+                logger.info("Advanced MLEngine loaded — using persisted model for anomaly detection")
+        except Exception as e:
+            logger.debug(f"MLEngine not available, using basic IsolationForest: {e}")
+
+    # ------------------------------------------------------------------
+    # Training
+    # ------------------------------------------------------------------
+
+    def train_model(self, samples: list) -> None:
         """
-        Train the ML anomaly detection model with transaction samples.
-        
-        Args:
-            samples: List of transaction dictionaries for training
+        Train anomaly detection model (§314.4(d) — testing and monitoring).
+        Delegates to MLEngine (persistent) when available; falls back to
+        the in-memory IsolationForest.
         """
         if not self.validate_training_source(samples):
             raise SecurityError("Untrusted training data source")
-
         if not samples:
             return
-            
-        # Extract features for ML model with normalization
+
+        # Try advanced ML engine first
+        if self._ml_engine is not None:
+            try:
+                self._ml_engine.train(samples)
+                self._use_advanced_ml = True
+                logger.info(f"MLEngine trained on {len(samples)} samples")
+                return
+            except Exception as e:
+                logger.warning(f"MLEngine training failed, using basic model: {e}")
+
+        # Fallback: basic 6-feature IsolationForest
         features = []
         for tx in samples:
-            amount_norm = min(tx.get('amount', 0) / 500000, 1.0)
-            tx_features = [
+            amount_norm = min(tx.get('amount', 0) / 500_000, 1.0)
+            features.append([
                 amount_norm,
-                len(tx.get('beneficiary', '')) / 100,  # Normalize string length
-                len(tx.get('sender', '')) / 100,       # Normalize string length
+                len(tx.get('beneficiary', '')) / 100,
+                len(tx.get('sender', '')) / 100,
                 1 if tx.get('cross_border', False) else 0,
-                tx.get('hour', 12) / 24,               # Normalize hour
-                tx.get('day_of_week', 1) / 7           # Normalize day
-            ]
-            features.append(tx_features)
-            
-        # Train the model
-        self.model.fit(features)
-        self.is_trained = True
+                tx.get('hour', 12) / 24,
+                tx.get('day_of_week', 1) / 7,
+            ])
+        self._basic_model.fit(features)
+        self._basic_trained = True
+
+    # ------------------------------------------------------------------
+    # Scanning (§314.4(c)(8) + §314.4(b))
+    # ------------------------------------------------------------------
 
     def scan(self, tx_data: dict) -> dict:
         """
-        Scan transaction data per GLBA §314.4(c)(1) requirements.
-        Enforces GLBA §314.4(c)(3) device authentication requirements.
-        Returns risk score (0-100) and threat flags.
+        Scan a transaction and return risk score, threat flags, and FinCEN
+        compliance results.
+
+        Implements:
+          §314.4(c)(8) — Activity monitoring and anomaly detection
+          §314.4(b)    — Risk-based assessment
+          §314.4(c)(1) — Access control check (device fingerprint)
         """
         risk_score = 0
-        threat_flags = []
-        
-        # GLBA §314.4(c)(1): Risk-based assessment
-        if tx_data.get('amount', 0) > 10000:  # USD 10,000 threshold (FinCEN requirement)
+        threat_flags: List[str] = []
+
+        # High-value transaction monitoring
+        amount = tx_data.get('amount', 0)
+        if amount > self.CTR_THRESHOLD:
             risk_score += self.glb_risk_factors['high_value_tx']
             threat_flags.append('HIGH_VALUE_TRANSACTION')
-            
+
+        # Cross-border transfer
         if tx_data.get('cross_border', False):
             risk_score += self.glb_risk_factors['cross_border']
             threat_flags.append('CROSS_BORDER_TRANSFER')
-            
-        # GLBA §314.4(c)(3): Device authentication requirements
-        if 'device_fingerprint' not in tx_data or not tx_data['device_fingerprint']:
+
+        # §314.4(c)(1): Device fingerprint — access control enforcement
+        if not tx_data.get('device_fingerprint'):
             risk_score += 10
             threat_flags.append('MISSING_DEVICE_ID')
-            
-        # FinCEN compliance checks
-        if tx_data.get('amount', 0) > 3000:  # Wire transfer monitoring
+
+        # Wire transfer monitoring (§314.4(d) / FinCEN)
+        if amount > self.WIRE_THRESHOLD:
             risk_score += self.glb_risk_factors['wire_transfer']
             threat_flags.append('WIRE_TRANSFER_MONITORING')
-            
-        # Structuring detection (multiple transactions under reporting threshold)
-        if tx_data.get('transaction_count', 1) > 3 and tx_data.get('amount', 0) < 10000:
+
+        # Structuring detection
+        if tx_data.get('transaction_count', 1) > 3 and amount < self.CTR_THRESHOLD:
             risk_score += self.glb_risk_factors['structuring']
             threat_flags.append('STRUCTURING_SUSPECTED')
-            
-        # Currency transaction reporting
-        if tx_data.get('currency_type', '').upper() == 'CASH' and tx_data.get('amount', 0) > 10000:
+
+        # Cash currency transaction reporting
+        if tx_data.get('currency_type', '').upper() == 'CASH' and amount > self.CTR_THRESHOLD:
             risk_score += self.glb_risk_factors['currency_transaction']
             threat_flags.append('CURRENCY_TRANSACTION_REPORTING')
-            
-        # ML anomaly detection if model is trained
-        if self.is_trained:
-            # Normalize amount to 0-1 range for improved ML accuracy
-            amount_norm = min(tx_data.get('amount', 0) / 500000, 1.0)
-            features = [
+
+        # ML anomaly detection
+        anomaly_detected = self._run_ml_detection(tx_data)
+        if anomaly_detected:
+            risk_score += 30
+            threat_flags.append('ML_ANOMALY_DETECTED')
+
+        fincen_compliance = self.check_fincen_compliance(tx_data)
+
+        return {
+            'risk_score': min(risk_score, 100),
+            'threat_flags': threat_flags,
+            'fincen_compliance': fincen_compliance,
+            'currency': 'USD',
+            'compliance_requirements': self._get_compliance_requirements(tx_data),
+        }
+
+    def _run_ml_detection(self, tx_data: dict) -> bool:
+        """Return True if ML model flags the transaction as anomalous."""
+        # Use advanced MLEngine if available
+        if self._use_advanced_ml and self._ml_engine is not None:
+            try:
+                is_anomaly, _ = self._ml_engine.predict(tx_data)
+                return is_anomaly
+            except Exception:
+                pass
+
+        # Fall back to basic model if trained
+        if self._basic_trained:
+            amount_norm = min(tx_data.get('amount', 0) / 500_000, 1.0)
+            features = [[
                 amount_norm,
-                len(tx_data.get('beneficiary', '')) / 100,  # Normalize string length
-                len(tx_data.get('sender', '')) / 100,       # Normalize string length
+                len(tx_data.get('beneficiary', '')) / 100,
+                len(tx_data.get('sender', '')) / 100,
                 1 if tx_data.get('cross_border', False) else 0,
-                tx_data.get('hour', 12) / 24,               # Normalize hour
-                tx_data.get('day_of_week', 1) / 7           # Normalize day
-            ]
-            # Anomaly score: higher score = more anomalous
-            anomaly_score = 1 - self.model.decision_function([features])[0]
-            risk_score += int(30 * anomaly_score)
-            
-            if anomaly_score > 0.7:
-                threat_flags.append('ML_ANOMALY_DETECTED')
-                
-        # Add FinCEN compliance results - use cached data for performance
-        fincen_compliance = self.check_fincen_compliance_fast(tx_data)
-        
-        return {
-            "risk_score": min(risk_score, 100), 
-            "threat_flags": threat_flags,
-            "fincen_compliance": fincen_compliance,
-            "currency": "USD",  # Updated from AED to USD
-            "compliance_requirements": self._get_compliance_requirements(tx_data)
-        }
+                tx_data.get('hour', 12) / 24,
+                tx_data.get('day_of_week', 1) / 7,
+            ]]
+            score = 1 - self._basic_model.decision_function(features)[0]
+            return score > 0.7
 
-    def check_fincen_compliance_fast(self, tx_data: Dict) -> Dict[str, bool]:
-        """
-        Fast FinCEN compliance check using cached data to meet performance requirements.
-        """
-        # Always use fallback data in test mode
-        if self.test_mode:
-            self.sanction_cache = self._get_ofac_fallback_data()
-        elif not self.sanction_cache:
-            self.sanction_cache = self._get_ofac_fallback_data()
-        
-        return {
-            'suspicious_activity': tx_data.get('amount', 0) > 10000,
-            'sanctions_check': self._check_sanctions_match_fast(tx_data),
-            'structuring_detection': tx_data.get('transaction_count', 1) > 3,
-            'currency_reporting': tx_data.get('currency_type', '').upper() == 'CASH'
-        }
-
-    def _check_sanctions_match_fast(self, tx_data: Dict) -> bool:
-        """Fast sanctions check using cached data."""
-        beneficiary = tx_data.get('beneficiary', '').lower()
-        sender = tx_data.get('sender', '').lower()
-        
-        # Check against cached sanctions
-        for entity in self.sanction_cache:
-            if entity.lower() in beneficiary or entity.lower() in sender:
-                return True
         return False
 
+    # ------------------------------------------------------------------
+    # FinCEN compliance checks
+    # ------------------------------------------------------------------
+
+    def check_fincen_compliance(self, tx_data: dict) -> dict:
+        """
+        Full FinCEN BSA compliance check with correct field names.
+        Implements §314.4(c)(8) monitoring requirements.
+        """
+        amount = tx_data.get('amount', 0)
+        risk_flags = tx_data.get('risk_flags', [])
+
+        ctr_required = (
+            tx_data.get('currency_type', '').upper() == 'CASH'
+            and amount >= self.CTR_THRESHOLD
+        )
+        sar_required = (
+            amount >= self.SAR_THRESHOLD
+            and any(f in risk_flags for f in ('STRUCTURING_SUSPECTED', 'SANCTIONS_MATCH'))
+        )
+        wire_monitoring = (
+            amount >= self.WIRE_THRESHOLD
+            and tx_data.get('transfer_type', '').upper() == 'WIRE'
+        )
+        structuring_detected = (
+            tx_data.get('transaction_count', 1) > 3
+            and amount < self.CTR_THRESHOLD
+            and tx_data.get('time_period_hours', 24) <= 24
+        )
+        sanctions_match = self._check_sanctions_match(tx_data)
+
+        return {
+            'ctr_required': ctr_required,
+            'sar_required': sar_required,
+            'wire_monitoring': wire_monitoring,
+            'structuring_detected': structuring_detected,
+            'sanctions_match': sanctions_match,
+        }
+
+    # ------------------------------------------------------------------
+    # Sanctions screening
+    # ------------------------------------------------------------------
+
+    def load_sanction_list(self) -> Set[str]:
+        """
+        Load OFAC SDN, UNSC consolidated, and UK HMT sanctions lists.
+        Results are cached for `cache_expiry` seconds and persisted in memory.
+        """
+        if self.test_mode:
+            self.sanction_cache = self._get_ofac_fallback_data()
+            return self.sanction_cache
+
+        current_time = time.time()
+        if self.sanction_cache and (current_time - self.last_cache_update) < self.cache_expiry:
+            return self.sanction_cache
+
+        entities: Set[str] = set()
+        entities.update(self._load_ofac_sdn_list())
+        entities.update(self._load_unsc_sanctions())
+        entities.update(self._load_uk_sanctions())
+
+        # FinCEN BSA requires credentials — use fallback if not configured
+        fincen_key = os.environ.get('COMPLYCHAIN_FINCEN_API_KEY')
+        if fincen_key:
+            entities.update(self._load_fincen_bsa_data(fincen_key))
+        else:
+            entities.update(self._get_fincen_fallback_data())
+
+        if not entities:
+            entities = self._get_ofac_fallback_data()
+
+        self.sanction_cache = entities
+        self.last_cache_update = current_time
+        return entities
+
+    def _load_ofac_sdn_list(self) -> Set[str]:
+        """Load OFAC Specially Designated Nationals (SDN) list (publicly available)."""
+        try:
+            response = requests.get(
+                'https://www.treasury.gov/ofac/downloads/sdn.xml',
+                timeout=self.fincen_timeout,
+                headers={'User-Agent': 'ComplyChain-GLBA-Scanner/1.0'},
+            )
+            response.raise_for_status()
+
+            # OFAC SDN XML uses the ofac namespace
+            ns = {'ofac': 'https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN'}
+            root = ET.fromstring(response.content)
+
+            entities: Set[str] = set()
+            # Try namespaced and non-namespaced paths
+            for sdn in root.findall('.//{https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN}sdnEntry') or root.findall('.//sdnEntry'):
+                for tag in ('lastName', 'firstName', '{https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN}lastName'):
+                    name_elem = sdn.find(tag)
+                    if name_elem is not None and name_elem.text:
+                        entities.add(name_elem.text.upper())
+                for aka in sdn.findall('.//{https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN}aka') or sdn.findall('.//aka'):
+                    if aka.text:
+                        entities.add(aka.text.upper())
+
+            if entities:
+                logger.info(f"Loaded {len(entities)} entities from OFAC SDN list")
+                return entities
+
+        except Exception as e:
+            logger.warning(f"OFAC SDN list unavailable: {e}")
+
+        return self._get_ofac_fallback_data()
+
+    def _load_fincen_bsa_data(self, api_key: str) -> Set[str]:
+        """Load FinCEN BSA data (requires COMPLYCHAIN_FINCEN_API_KEY)."""
+        try:
+            response = requests.get(
+                'https://bsaefiling1.fincen.treas.gov/api/v1/suspicious-activity',
+                timeout=self.fincen_timeout,
+                headers={
+                    'Authorization': f'Bearer {api_key}',
+                    'User-Agent': 'ComplyChain-GLBA-Scanner/1.0',
+                    'Accept': 'application/json',
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            entities: Set[str] = set()
+            for entity in data.get('suspicious_entities', []):
+                if 'name' in entity:
+                    entities.add(entity['name'].upper())
+            return entities
+        except Exception as e:
+            logger.warning(f"FinCEN BSA data unavailable: {e}")
+            return self._get_fincen_fallback_data()
+
+    def _load_unsc_sanctions(self) -> Set[str]:
+        """Load UN Security Council consolidated sanctions list."""
+        try:
+            response = requests.get(
+                'https://scsanctions.un.org/resources/xml/en/consolidated.xml',
+                timeout=self.fincen_timeout,
+                headers={'User-Agent': 'ComplyChain-GLBA-Scanner/1.0'},
+            )
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+            entities: Set[str] = set()
+            for individual in root.findall('.//INDIVIDUAL'):
+                for tag in ('FIRST_NAME', 'SECOND_NAME', 'THIRD_NAME'):
+                    elem = individual.find(tag)
+                    if elem is not None and elem.text:
+                        entities.add(elem.text.upper())
+            if entities:
+                logger.info(f"Loaded {len(entities)} entities from UNSC list")
+                return entities
+        except Exception as e:
+            logger.warning(f"UNSC sanctions list unavailable: {e}")
+        return self._get_unsc_fallback_data()
+
+    def _load_uk_sanctions(self) -> Set[str]:
+        """Load UK HMT consolidated sanctions list (CSV)."""
+        try:
+            import csv
+            from io import StringIO
+            response = requests.get(
+                'https://assets.publishing.service.gov.uk/government/uploads/system/'
+                'uploads/attachment_data/file/consolidated_list.csv',
+                timeout=self.fincen_timeout,
+                headers={'User-Agent': 'ComplyChain-GLBA-Scanner/1.0'},
+            )
+            response.raise_for_status()
+            entities: Set[str] = set()
+            for row in csv.DictReader(StringIO(response.text)):
+                name = row.get('Name') or row.get('name')
+                if name:
+                    entities.add(name.upper())
+            if entities:
+                logger.info(f"Loaded {len(entities)} entities from UK HMT list")
+                return entities
+        except Exception as e:
+            logger.warning(f"UK HMT sanctions list unavailable: {e}")
+        return self._get_uk_fallback_data()
+
+    # ------------------------------------------------------------------
+    # Fallback data (used when live lists are unreachable)
+    # ------------------------------------------------------------------
+
+    def _get_ofac_fallback_data(self) -> Set[str]:
+        return {
+            'AL-QAIDA', 'ISIS', 'ISLAMIC STATE', 'TALIBAN', 'HAMAS',
+            'HEZBOLLAH', 'BOKO HARAM', 'AL SHABAAB', 'WAGNER GROUP',
+            'NORTH KOREA', 'DPRK', 'IRAN REVOLUTIONARY GUARD', 'IRGC',
+        }
+
+    def _get_fincen_fallback_data(self) -> Set[str]:
+        return {
+            'MONEY LAUNDERING ORG 1', 'TERROR FINANCING GROUP',
+            'CYBER CRIME SYNDICATE', 'DRUG TRAFFICKING ORG', 'CORRUPTION NETWORK',
+        }
+
+    def _get_unsc_fallback_data(self) -> Set[str]:
+        return {'UNSC DESIGNATED 1', 'UNSC DESIGNATED 2', 'UNSC DESIGNATED 3'}
+
+    def _get_uk_fallback_data(self) -> Set[str]:
+        return {'UK SANCTIONED 1', 'UK SANCTIONED 2', 'UK SANCTIONED 3'}
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
     def validate_training_source(self, samples: list) -> bool:
-        """
-        Validate training data source per GLBA §314.4(c)(1)
-        Implements checks for:
-        - Data provenance
-        - Sanctioned entities
-        - Suspicious patterns
-        """
-        # Check 1: Verify sample structure
+        """Validate training data integrity (§314.4(b) — risk assessment)."""
         required_keys = {'amount', 'beneficiary', 'sender'}
         if not all(required_keys.issubset(tx) for tx in samples):
             return False
 
-        # Check 2: Sanctioned entities screening - use cached data for performance
-        # Always use fallback data in test mode
-        if self.test_mode:
-            self.sanction_cache = self._get_ofac_fallback_data()
-        elif not self.sanction_cache:
-            self.sanction_cache = self._get_ofac_fallback_data()
-        
+        if not self.sanction_cache:
+            if self.test_mode:
+                self.sanction_cache = self._get_ofac_fallback_data()
+            else:
+                self.load_sanction_list()
+
         for tx in samples:
-            if any(entity.lower() in tx['beneficiary'].lower() for entity in self.sanction_cache):
+            beneficiary_upper = tx['beneficiary'].upper()
+            if any(entity in beneficiary_upper for entity in self.sanction_cache):
                 return False
 
-        # Check 3: Transaction amount distribution
         amounts = [tx['amount'] for tx in samples]
-        if max(amounts) / min(amounts) > 1000:  # Suspicious range
+        min_amount = min(amounts)
+        if min_amount <= 0:
+            return True  # Cannot compute ratio — skip range check
+        if max(amounts) / min_amount > 1000:
             return False
-            
+
         return True
 
-    def load_sanction_list(self) -> Set[str]:
-        """
-        Load OFAC and FinCEN sanction lists from multiple sources.
-        
-        Returns:
-            Set[str]: Set of sanctioned entity names
-            
-        Note:
-            In production, this would integrate with real sanctions APIs.
-            Currently uses comprehensive fallback data for demonstration.
-        """
-        # Always use fallback data in test mode
-        if self.test_mode:
-            self.sanction_cache = self._get_ofac_fallback_data()
-            return self.sanction_cache
-        current_time = time.time()
-        if self.sanction_cache and (current_time - self.last_cache_update) < self.cache_expiry:
-            return self.sanction_cache
-        
-        entities = set()
-        
-        # Try multiple sanctions data sources with timeout
-        sources = [
-            self._load_ofac_sdn_list(),
-            self._load_fincen_bsa_data(),
-            self._load_unsc_sanctions(),
-            self._load_uk_sanctions()
-        ]
-        
-        for source_entities in sources:
-            entities.update(source_entities)
-        
-        # Cache the results
-        self.sanction_cache = entities
-        self.last_cache_update = current_time
-        return entities
-    
-    def _load_ofac_sdn_list(self) -> Set[str]:
-        """Load OFAC Specially Designated Nationals (SDN) list."""
-        try:
-            # OFAC SDN list URL (real endpoint)
-            response = requests.get(
-                "https://www.treasury.gov/ofac/downloads/sdn.xml",
-                timeout=self.fincen_timeout,
-                headers={
-                    'User-Agent': 'ComplyChain-GLBA-Scanner/1.0'
-                }
-            )
-            response.raise_for_status()
-            
-            # Parse XML response for entity names
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.content)
-            
-            entities = set()
-            for sdn in root.findall('.//sdnEntry'):
-                name_elem = sdn.find('lastName')
-                if name_elem is not None:
-                    entities.add(name_elem.text)
-                
-                # Add aliases
-                for alias in sdn.findall('.//aka'):
-                    if alias.text:
-                        entities.add(alias.text)
-            
-            return entities
-            
-        except Exception as e:
-            print(f"OFAC SDN list loading failed: {e}")
-            return self._get_ofac_fallback_data()
-    
-    def _load_fincen_bsa_data(self) -> Set[str]:
-        """Load FinCEN BSA (Bank Secrecy Act) data."""
-        try:
-            # FinCEN BSA E-Filing API (requires registration)
-            # This is a placeholder for the actual FinCEN API integration
-            response = requests.get(
-                "https://bsa.fincen.gov/api/v1/suspicious-activity",
-                timeout=self.fincen_timeout,
-                headers={
-                    'User-Agent': 'ComplyChain-GLBA-Scanner/1.0',
-                    'Accept': 'application/json'
-                }
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            entities = set()
-            
-            # Extract entity names from BSA data
-            if 'suspicious_entities' in data:
-                for entity in data['suspicious_entities']:
-                    if 'name' in entity:
-                        entities.add(entity['name'])
-            
-            return entities
-            
-        except Exception as e:
-            print(f"FinCEN BSA data loading failed: {e}")
-            return self._get_fincen_fallback_data()
-    
-    def _load_unsc_sanctions(self) -> Set[str]:
-        """Load UN Security Council sanctions list."""
-        try:
-            # UN sanctions list (real endpoint)
-            response = requests.get(
-                "https://scsanctions.un.org/resources/xml/en/consolidated.xml",
-                timeout=self.fincen_timeout,
-                headers={
-                    'User-Agent': 'ComplyChain-GLBA-Scanner/1.0'
-                }
-            )
-            response.raise_for_status()
-            
-            # Parse UN sanctions XML
-            import xml.etree.ElementTree as ET
-            root = ET.fromstring(response.content)
-            
-            entities = set()
-            for individual in root.findall('.//INDIVIDUAL'):
-                name_elem = individual.find('FIRST_NAME')
-                if name_elem is not None:
-                    entities.add(name_elem.text)
-            
-            return entities
-            
-        except Exception as e:
-            print(f"UNSC sanctions loading failed: {e}")
-            return self._get_unsc_fallback_data()
-    
-    def _load_uk_sanctions(self) -> Set[str]:
-        """Load UK sanctions list."""
-        try:
-            # UK sanctions list (real endpoint)
-            response = requests.get(
-                "https://assets.publishing.service.gov.uk/government/uploads/system/uploads/attachment_data/file/consolidated_list.csv",
-                timeout=self.fincen_timeout,
-                headers={
-                    'User-Agent': 'ComplyChain-GLBA-Scanner/1.0'
-                }
-            )
-            response.raise_for_status()
-            
-            # Parse CSV response
-            import csv
-            from io import StringIO
-            
-            entities = set()
-            csv_data = StringIO(response.text)
-            reader = csv.DictReader(csv_data)
-            
-            for row in reader:
-                if 'Name' in row and row['Name']:
-                    entities.add(row['Name'])
-            
-            return entities
-            
-        except Exception as e:
-            print(f"UK sanctions loading failed: {e}")
-            return self._get_uk_fallback_data()
-    
-    def _get_ofac_fallback_data(self) -> Set[str]:
-        """Fallback OFAC data for demonstration."""
-        return {
-            "AL-QAIDA",
-            "ISIS",
-            "TALIBAN",
-            "HAMAS",
-            "HEZBOLLAH",
-            "BOKO_HARAM",
-            "AL_SHABAAB",
-            "WAGNER_GROUP",
-            "NORTH_KOREA_DPRK",
-            "IRAN_REVOLUTIONARY_GUARD"
-        }
-    
-    def _get_fincen_fallback_data(self) -> Set[str]:
-        """Fallback FinCEN data for demonstration."""
-        return {
-            "MONEY_LAUNDERING_ORG_1",
-            "TERROR_FINANCING_GROUP",
-            "CYBER_CRIME_SYNDICATE",
-            "DRUG_TRAFFICKING_ORG",
-            "CORRUPTION_NETWORK"
-        }
-    
-    def _get_unsc_fallback_data(self) -> Set[str]:
-        """Fallback UNSC data for demonstration."""
-        return {
-            "UNSC_DESIGNATED_1",
-            "UNSC_DESIGNATED_2",
-            "UNSC_DESIGNATED_3"
-        }
-    
-    def _get_uk_fallback_data(self) -> Set[str]:
-        """Fallback UK sanctions data for demonstration."""
-        return {
-            "UK_SANCTIONED_1",
-            "UK_SANCTIONED_2",
-            "UK_SANCTIONED_3"
-        }
-    
-    def check_fincen_compliance(self, tx_data: Dict) -> Dict[str, bool]:
-        """
-        Check FinCEN compliance requirements for transaction.
-        
-        Args:
-            tx_data: Transaction data dictionary
-            
-        Returns:
-            Dict: Compliance check results
-        """
-        compliance_results = {
-            'ctr_required': False,  # Currency Transaction Report
-            'sar_required': False,  # Suspicious Activity Report
-            'wire_monitoring': False,
-            'structuring_detected': False,
-            'sanctions_match': False
-        }
-        
-        amount = tx_data.get('amount', 0)
-        
-        # Currency Transaction Report (CTR) - $10,000+ cash transactions
-        if (tx_data.get('currency_type', '').upper() == 'CASH' and 
-            amount >= 10000):
-            compliance_results['ctr_required'] = True
-            
-        # Suspicious Activity Report (SAR) - $5,000+ suspicious activity
-        if amount >= 5000 and any(flag in tx_data.get('risk_flags', []) 
-                                 for flag in ['STRUCTURING_SUSPECTED', 'SANCTIONS_MATCH']):
-            compliance_results['sar_required'] = True
-            
-        # Wire transfer monitoring - $3,000+ wire transfers
-        if amount >= 3000 and tx_data.get('transfer_type', '').upper() == 'WIRE':
-            compliance_results['wire_monitoring'] = True
-            
-        # Structuring detection
-        if (tx_data.get('transaction_count', 1) > 3 and 
-            amount < 10000 and 
-            tx_data.get('time_period_hours', 24) <= 24):
-            compliance_results['structuring_detected'] = True
-            
-        # Sanctions screening
-        sanctioned_entities = self.load_sanction_list()
-        beneficiary = tx_data.get('beneficiary', '').lower()
-        if any(entity.lower() in beneficiary for entity in sanctioned_entities):
-            compliance_results['sanctions_match'] = True
-            
-        return compliance_results
-    
-    def _get_compliance_requirements(self, tx_data: Dict) -> List[str]:
-        """
-        Get list of compliance requirements for transaction.
-        
-        Args:
-            tx_data: Transaction data dictionary
-            
-        Returns:
-            List[str]: List of compliance requirements
-        """
-        requirements = []
-        amount = tx_data.get('amount', 0)
-        
-        # GLBA §314.4(c)(1) requirements
-        if amount > 10000:
-            requirements.append("GLBA_314_4_c_1_HIGH_VALUE_MONITORING")
-            
-        # GLBA §314.4(c)(3) device authentication
-        if 'device_fingerprint' in tx_data:
-            requirements.append("GLBA_314_4_c_3_DEVICE_AUTHENTICATION")
-            
-        # FinCEN requirements
-        if amount >= 10000 and tx_data.get('currency_type', '').upper() == 'CASH':
-            requirements.append("FINCEN_CTR_REQUIRED")
-            
-        if amount >= 3000 and tx_data.get('transfer_type', '').upper() == 'WIRE':
-            requirements.append("FINCEN_WIRE_MONITORING")
-            
-        # OFAC sanctions screening
-        if self._check_sanctions_match(tx_data):
-            requirements.append("OFAC_SANCTIONS_SCREENING")
-            
-        return requirements
-    
-    def _check_sanctions_match(self, tx_data: Dict) -> bool:
-        """
-        Check if transaction matches any sanctioned entities.
-        
-        Args:
-            tx_data: Transaction data dictionary
-            
-        Returns:
-            bool: True if sanctions match found
-        """
-        sanctioned_entities = self.load_sanction_list()
-        beneficiary = tx_data.get('beneficiary', '').lower()
-        sender = tx_data.get('sender', '').lower()
-        
+    def _check_sanctions_match(self, tx_data: dict) -> bool:
+        """Check transaction parties against the loaded sanctions list."""
+        if not self.sanction_cache:
+            self.load_sanction_list()
+        beneficiary = tx_data.get('beneficiary', '').upper()
+        sender = tx_data.get('sender', '').upper()
         return any(
-            entity.lower() in beneficiary or entity.lower() in sender
-            for entity in sanctioned_entities
+            entity in beneficiary or entity in sender
+            for entity in self.sanction_cache
         )
+
+    def _get_compliance_requirements(self, tx_data: dict) -> List[str]:
+        """Return applicable GLBA/FinCEN requirements for this transaction."""
+        requirements: List[str] = []
+        amount = tx_data.get('amount', 0)
+
+        if amount > self.CTR_THRESHOLD:
+            requirements.append('GLBA_314_4_c_8_HIGH_VALUE_MONITORING')
+        if tx_data.get('device_fingerprint'):
+            requirements.append('GLBA_314_4_c_1_DEVICE_ACCESS_CONTROL')
+        if amount >= self.CTR_THRESHOLD and tx_data.get('currency_type', '').upper() == 'CASH':
+            requirements.append('FINCEN_CTR_REQUIRED')
+        if amount >= self.WIRE_THRESHOLD and tx_data.get('transfer_type', '').upper() == 'WIRE':
+            requirements.append('FINCEN_WIRE_MONITORING')
+        if self._check_sanctions_match(tx_data):
+            requirements.append('OFAC_SANCTIONS_SCREENING')
+
+        return requirements

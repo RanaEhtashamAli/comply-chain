@@ -138,6 +138,17 @@ QUANTUM_SAFE_IMPLEMENTATION.md
 # Egg info
 complychain.egg-info/
 
+# Trained ML model artifacts (regenerate via: complychain train-model)
+models/*.pkl
+models/model_metadata.json
+
+# CLI build artifact
+complychain/cli_enhanced.zip
+
+# Audit chain (instance-specific runtime data)
+audit_chain/
+~/.complychain/
+
 # Debug scripts (optional, comment out if you want to keep these in git)
 debug_falcon.py
 debug_verification.py 

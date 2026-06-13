@@ -6,7 +6,7 @@
 
 - 📦 PyPI: [`pip install complychain`](https://pypi.org/project/complychain/)
 - 📄 [White Paper (PDF)](./docs/ComplyChain%20White%20Paper.pdf)
-- 🔐 Quantum-Safe | GLBA §314.4 | FIPS 203 | FinCEN Integrated
+- 🔐 Quantum-Safe | GLBA §314.4 | FIPS 204 | FinCEN Integrated
 - 🌐 GitHub: [github.com/RanaEhtashamAli/comply-chain](https://github.com/RanaEhtashamAli/comply-chain)
 
 
@@ -23,12 +23,12 @@ ComplyChain implements comprehensive **GLBA §314.4 Safeguards Rule** requiremen
 
 | GLBA Requirement | Section | Module | Implementation |
 |------------------|---------|--------|----------------|
-| **Data Encryption** | §314.4(c)(1) | `threat_scanner` | Multi-source threat detection |
-| **Access Controls** | §314.4(c)(2) | `crypto_engine` | Quantum-resistant cryptography |
-| **Device Authentication** | §314.4(c)(3) | `audit_system` | Blockchain-style audit logs |
-| **Audit Trails** | §314.4(b) | `audit_system` | Real-time monitoring |
-| **Incident Response** | §314.4(d) | `audit_system` | Automated alerting |
-| **Employee Training** | §314.4(f) | `threat_scanner` | ML-based compliance scoring |
+| **Access Controls** | §314.4(c)(1) | `crypto_engine` | Key management and access enforcement |
+| **Data Encryption** | §314.4(c)(3) | `crypto_engine` | FIPS 204 / ML-DSA quantum-resistant cryptography |
+| **Audit Trails** | §314.4(c)(8) | `audit_system` | Blockchain-style Merkle chain audit logs |
+| **Incident Response** | §314.4(h) | `audit_system` | Automated alerting and IR plan enforcement |
+| **Employee Training** | §314.4(e) | `threat_scanner` | ML-based compliance scoring |
+| **Vendor Management** | §314.4(f) | `threat_scanner` | Sanctions screening (OFAC/FinCEN) |
 
 ## 📊 **Performance Benchmark**
 
@@ -41,14 +41,14 @@ ComplyChain implements comprehensive **GLBA §314.4 Safeguards Rule** requiremen
 
 ## ✨ **Features**
 
-- ✅ **Real-time transaction scanning** (GLBA §314.4(c)(1))
-- 🔐 **Quantum-safe signature generation** (GLBA §314.4(c)(2))
-- 🖥 **Blockchain-style audit logging** (GLBA §314.4(b))
+- ✅ **Real-time transaction scanning** (GLBA §314.4(c)(8))
+- 🔐 **Quantum-safe signature generation** (GLBA §314.4(c)(3))
+- 🖥 **Blockchain-style audit logging** (GLBA §314.4(c)(8))
 - 📈 **PDF report generation in seconds**
 - ⚙️ **Docker support for deployment**
 - 🔄 **Automated incident detection and response**
 - 🌐 **FinCEN API integration** for sanctions screening
-- 🛡️ **FIPS 140-3 Level 1** security certification
+- 🛡️ **FIPS 140-3 Level 1** aligned (designed to meet Level 1 requirements)
 - 🔒 **OWASP 2024** security parameters
 - 📋 **Comprehensive compliance reporting**
 
@@ -318,7 +318,7 @@ Available algorithms: ['rsa-4096']
 ### **Quantum-Safe Features**
 
 #### **Dilithium3 Implementation**
-- **NIST Standard**: CRYSTALS-Dilithium Level 3 (FIPS 203)
+- **NIST Standard**: CRYSTALS-Dilithium Level 3 (FIPS 204)
 - **Security Level**: 128-bit quantum security
 - **Key Sizes**: 1952 bytes (public), 4000 bytes (private)
 - **Signature Size**: 3366 bytes
@@ -373,13 +373,13 @@ docker run -v /audit_chain:/audit_chain \
 
 #### **Crypto Engine** (`crypto_engine.py`)
 - **Hybrid cryptography**: Dilithium3 (quantum-safe) + RSA-4096 (fallback)
-- **FIPS 140-3 Level 1** security certification
+- **FIPS 140-3 Level 1** aligned (designed to meet Level 1 requirements)
 - **QuantumSafeSigner class**: Dedicated quantum-safe signature operations
 - **PEM format support**: Export/import keys for HSM integration
 - **liboqs integration**: Open Quantum Safe library support
 - **OWASP 2024 parameters**: SCRYPT_N=16384, SCRYPT_R=8
 - **Secure memory management** with zeroization
-- **NIST FIPS 203** compliance (CRYSTALS-Dilithium)
+- **NIST FIPS 204** compliance (CRYSTALS-Dilithium)
 
 #### **Audit System** (`audit_system.py`)
 - **Blockchain-style audit trails** with Merkle trees
@@ -390,12 +390,12 @@ docker run -v /audit_chain:/audit_chain \
 ## 🛡️ **Security Features**
 
 ### **Quantum-Safe Cryptography**
-- **CRYSTALS-Dilithium Level 3** (NIST FIPS 203)
+- **CRYSTALS-Dilithium Level 3** (NIST FIPS 204)
 - **RSA-4096 fallback** for legacy compatibility
 - **Hybrid deployment** for gradual migration
 
 ### **Memory Security**
-- **FIPS 140-3 Level 1** memory protection
+- **FIPS 140-3 Level 1** aligned memory protection
 - **Secure zeroization** using `ctypes.memset`
 - **Memory locking** with `mlock/munlock`
 - **Reference tracking** for cleanup
@@ -409,15 +409,16 @@ docker run -v /audit_chain:/audit_chain \
 ## 📋 **Compliance Standards**
 
 ### **GLBA §314.4 Implementation**
-- ✅ **§314.4(c)(1)**: Data encryption and threat detection
-- ✅ **§314.4(c)(2)**: Access controls and quantum-safe crypto
-- ✅ **§314.4(c)(3)**: Device authentication and validation
-- ✅ **§314.4(b)**: Audit trails and monitoring
-- ✅ **§314.4(d)**: Incident response and alerting
-- ✅ **§314.4(f)**: Employee training and compliance
+- ✅ **§314.4(b)**: Risk assessment and classification
+- ✅ **§314.4(c)(1)**: Access controls and key management
+- ✅ **§314.4(c)(3)**: Data encryption (FIPS 204 / ML-DSA)
+- ✅ **§314.4(c)(8)**: Audit trails and activity monitoring
+- ✅ **§314.4(e)**: Employee training and compliance scoring
+- ✅ **§314.4(f)**: Vendor management and sanctions screening
+- ✅ **§314.4(h)**: Incident response and automated alerting
 
 ### **Additional Standards**
-- **NIST FIPS 203**: Post-quantum cryptography
+- **NIST FIPS 204**: Post-quantum cryptography
 - **NIST SP 800-131A**: Key management
 - **OWASP 2024**: Security parameters
 - **FinCEN BSA**: Bank Secrecy Act compliance

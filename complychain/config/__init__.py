@@ -34,12 +34,19 @@ class ConfigManager:
             "compliance": {
                 "mode": "strict",
                 "glba_sections": {
-                    "314.4(c)(1)": "Data Encryption",
-                    "314.4(c)(2)": "Access Controls", 
-                    "314.4(c)(3)": "Device Authentication",
-                    "314.4(b)": "Audit Trails",
-                    "314.4(d)": "Incident Response",
-                    "314.4(f)": "Employee Training"
+                    "314.4(b)":    "Risk Assessment",
+                    "314.4(c)(1)": "Access Controls",
+                    "314.4(c)(2)": "Data Inventory and Classification",
+                    "314.4(c)(3)": "Data Encryption (FIPS 204 / ML-DSA)",
+                    "314.4(c)(4)": "Secure Development Practices",
+                    "314.4(c)(5)": "Multi-Factor Authentication",
+                    "314.4(c)(6)": "Customer Information Disposal",
+                    "314.4(c)(7)": "Change Management Procedures",
+                    "314.4(c)(8)": "Audit Trails and Activity Monitoring",
+                    "314.4(d)":    "Testing and Monitoring",
+                    "314.4(e)":    "Employee Security Training",
+                    "314.4(f)":    "Vendor Management and Oversight",
+                    "314.4(h)":    "Incident Response Plan"
                 }
             },
             "crypto": {

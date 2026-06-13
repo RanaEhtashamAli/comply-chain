@@ -106,40 +106,63 @@ def scan(
         sys.exit(1)
 
 
+def _resolve_keys(signer: QuantumSafeSigner, key_dir: Path = None) -> Path:
+    """
+    Load keys from key_dir (or default ~/.complychain/keys/).
+    Generates and saves a new key pair if none exist yet.
+    Returns the key directory used.
+    """
+    from .crypto_engine import DEFAULT_KEY_DIR
+    keys_dir = Path(key_dir) if key_dir else DEFAULT_KEY_DIR
+    algo_slug = signer.algorithm.lower().replace('-', '_').replace('+', 'plus')
+    priv_path = keys_dir / f"private_key_{algo_slug}.pem"
+    pub_path = keys_dir / f"public_key_{algo_slug}.pem"
+
+    if priv_path.exists() and pub_path.exists():
+        signer.import_private_key_pem(priv_path.read_text())
+        signer.import_public_key_pem(pub_path.read_text())
+        console.print(f"[blue]Using existing keys from {keys_dir}[/blue]")
+    else:
+        console.print(f"[yellow]No keys found — generating new {signer.algorithm} key pair...[/yellow]")
+        signer.generate_keys()
+        keys_dir.mkdir(parents=True, exist_ok=True)
+        priv_path.write_text(signer.export_private_key_pem())
+        pub_path.write_text(signer.export_public_key_pem())
+        # Restrict private key permissions
+        priv_path.chmod(0o600)
+        console.print(f"[green]Keys saved to {keys_dir}[/green]")
+        console.print(f"  Private key: {priv_path}")
+        console.print(f"  Public key:  {pub_path}")
+
+    return keys_dir
+
+
 @app.command()
 def sign(
     file: Path = typer.Argument(..., help="File to sign"),
-    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output signature file")
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output signature file"),
+    key_dir: Optional[Path] = typer.Option(None, "--key-dir", help="Key directory (default: ~/.complychain/keys/)"),
 ):
-    """Sign a file with quantum-safe cryptography."""
+    """Sign a file with quantum-safe cryptography (GLBA §314.4(c)(3))."""
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("Signing file...", total=None)
-            
-            # Load file content
-            with open(file, 'rb') as f:
-                data = f.read()
-            
-            # Initialize quantum-safe signer
-            signer = QuantumSafeSigner()
-            
-            # Generate signature
+        with open(file, 'rb') as f:
+            data = f.read()
+
+        signer = QuantumSafeSigner()
+        _resolve_keys(signer, key_dir)
+
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task(f"Signing with {signer.algorithm}...", total=None)
             signature = signer.sign(data)
-            
             progress.update(task, completed=True)
-        
-        # Save signature
+
         if output:
             with open(output, 'wb') as f:
                 f.write(signature)
             console.print(f"[green]Signature saved to {output}[/green]")
         else:
-            console.print(f"[green]Signature generated: {len(signature)} bytes[/green]")
-            
+            console.print(f"[green]Signature generated: {len(signature)} bytes ({signer.algorithm})[/green]")
+
     except Exception as e:
         console.print(f"[red]Signing failed: {e}[/red]")
         sys.exit(1)
@@ -295,12 +318,19 @@ def compliance(
         table.add_column("Status", style="magenta")
         table.add_column("Implementation", style="green")
         glba_sections = [
-            ("§314.4(c)(1)", "Data Encryption", "threat_scanner"),
-            ("§314.4(c)(2)", "Access Controls", "crypto_engine"),
-            ("§314.4(c)(3)", "Device Authentication", "audit_system"),
-            ("§314.4(b)", "Audit Trails", "audit_system"),
-            ("§314.4(d)", "Incident Response", "audit_system"),
-            ("§314.4(f)", "Employee Training", "threat_scanner"),
+            ("§314.4(b)",    "Risk Assessment",                   "glba_engine"),
+            ("§314.4(c)(1)", "Access Controls",                   "threat_scanner"),
+            ("§314.4(c)(2)", "Data Inventory",                    "—"),
+            ("§314.4(c)(3)", "Data Encryption (FIPS 204)",        "crypto_engine"),
+            ("§314.4(c)(4)", "Secure Development Practices",      "pyproject.toml"),
+            ("§314.4(c)(5)", "Multi-Factor Authentication",       "—"),
+            ("§314.4(c)(6)", "Data Disposal",                     "—"),
+            ("§314.4(c)(7)", "Change Management",                 "—"),
+            ("§314.4(c)(8)", "Audit Trails & Activity Monitoring","audit_system"),
+            ("§314.4(d)",    "Testing and Monitoring",            "ml_engine"),
+            ("§314.4(e)",    "Employee Training",                 "—"),
+            ("§314.4(f)",    "Vendor Management",                 "—"),
+            ("§314.4(h)",    "Incident Response Plan",            "audit_system"),
         ]
         for section, description, module in glba_sections:
             status = "✓" if config.get(f"compliance.{section}", False) else "⚠"
@@ -315,37 +345,29 @@ def compliance(
 def quantum_sign(
     file: Path = typer.Argument(..., help="File to sign with quantum-safe cryptography"),
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output signature file"),
-    algorithm: str = typer.Option("dilithium3", "--algorithm", "-a", help="Quantum algorithm (dilithium3/falcon/sphincs+/rsa)")
+    algorithm: str = typer.Option("dilithium3", "--algorithm", "-a", help="Quantum algorithm (dilithium3/rsa)"),
+    key_dir: Optional[Path] = typer.Option(None, "--key-dir", help="Key directory (default: ~/.complychain/keys/)"),
 ):
-    """Sign a file with quantum-safe cryptography (Dilithium3/Falcon/SPHINCS+ with RSA fallback)."""
+    """Sign a file with FIPS 204 / ML-DSA (Dilithium3) or RSA-4096 fallback (GLBA §314.4(c)(3))."""
     try:
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console
-        ) as progress:
-            task = progress.add_task("Signing with quantum-safe cryptography...", total=None)
-            
-            # Load file content
-            with open(file, 'rb') as f:
-                data = f.read()
-            
-            # Initialize quantum-safe signer
-            signer = QuantumSafeSigner(algorithm=algorithm.upper())
-            
-            # Generate signature
+        with open(file, 'rb') as f:
+            data = f.read()
+
+        signer = QuantumSafeSigner(algorithm=algorithm.upper())
+        _resolve_keys(signer, key_dir)
+
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task(f"Signing with {signer.algorithm}...", total=None)
             signature = signer.sign(data)
-            
             progress.update(task, completed=True)
-        
-        # Save signature
+
         if output:
             with open(output, 'wb') as f:
                 f.write(signature)
             console.print(f"[green]Quantum-safe signature saved to {output}[/green]")
         else:
-            console.print(f"[green]Quantum-safe signature generated: {len(signature)} bytes[/green]")
-            
+            console.print(f"[green]Quantum-safe signature generated: {len(signature)} bytes ({signer.algorithm})[/green]")
+
     except Exception as e:
         console.print(f"[red]Quantum signing failed: {e}[/red]")
         sys.exit(1)
