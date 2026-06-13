@@ -1,189 +1,567 @@
-#!/usr/bin/env python3
 """
-ComplyChain CLI
-GLBA-focused compliance toolkit command-line interface.
+Enhanced CLI for ComplyChain using Typer.
 
-Copyright 2024 ComplyChain Contributors
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+This module provides a modern CLI interface with new commands for
+audit verification, key rotation, model training, and compliance checking.
 """
 
-import click
 import json
+import sys
+import time
+from pathlib import Path
+from typing import Optional
+import typer
+from rich.console import Console
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+from .config.logging_config import setup_logging, get_logger
+from .config import get_config
+from .exceptions import ComplyChainError
 from .threat_scanner import GLBAScanner
-from .crypto_engine import ComplyChainCrypto
+from .crypto_engine import QuantumSafeSigner
 from .audit_system import GLBAAuditor
+from .detection.ml_engine import MLEngine
 
-@click.group()
-def cli():
-    """ComplyChain CLI: GLBA-focused compliance toolkit."""
-    pass
+# Create Typer app
+app = typer.Typer(
+    name="complychain",
+    help="Enterprise-grade GLBA compliance toolkit with quantum-safe cryptography",
+    add_completion=False
+)
 
-@cli.command()
-@click.option('--file', type=click.Path(exists=True), required=True, help='Transaction JSON file')
-@click.option('--quantum-safe', is_flag=True, help='Enable quantum-resistant crypto')
-def scan(file, quantum_safe):
-    """Scan a transaction for threats and risk per GLBA §314.4(c)(1)."""
-    with open(file, 'r') as f:
-        tx_data = json.load(f)
-    
-    # Add quantum-safe flag to transaction data
-    tx_data['quantum_safe_enabled'] = quantum_safe
-    
-    scanner = GLBAScanner()
-    result = scanner.scan(tx_data)
-    
-    # Add crypto mode information to result
-    result['crypto_mode'] = 'quantum-safe' if quantum_safe else 'traditional'
-    result['crypto_algorithm'] = 'Dilithium3' if quantum_safe else 'RSA-4096'
-    
-    click.echo(json.dumps(result, indent=2))
+# Rich console for better output
+console = Console()
+logger = get_logger(__name__)
 
-@cli.command()
-@click.option('--type', 'report_type', type=click.Choice(['daily', 'monthly', 'incident']), required=True)
-@click.option('--output', type=click.Path(), required=True)
-def report(report_type, output):
-    """Generate a GLBA compliance report (PDF) per GLBA §314.4(b)."""
-    auditor = GLBAAuditor()
-    pdf_bytes = auditor.generate_report(report_type)
-    with open(output, 'wb') as f:
-        f.write(pdf_bytes)
-    click.echo(f"Report saved to {output}")
 
-@cli.command()
-@click.option('--samples', default=100000, help='Number of test samples')
-def benchmark(samples):
-    """Test transaction processing speed and compare vs legacy baseline (290ms)."""
-    import time
-    import random
-    import tracemalloc
-    
-    scanner = GLBAScanner()
-    
-    # Generate test data
-    test_transactions = []
-    for i in range(samples):
-        tx = {
-            'amount': random.randint(1000, 500000),
-            'beneficiary': f'beneficiary_{i}',
-            'sender': f'sender_{i}',
-            'cross_border': random.choice([True, False]),
-            'hour': random.randint(0, 23),
-            'day_of_week': random.randint(1, 7),
-            'device_fingerprint': f'device_{i}'  # Add device fingerprint for GLBA compliance
-        }
-        test_transactions.append(tx)
-    
-    # Train model with subset for efficiency
-    train_size = min(1000, samples // 10)
-    scanner.train_model(test_transactions[:train_size])
-    
-    # Benchmark scan performance
-    tracemalloc.start()
-    start_time = time.time()
-    for tx in test_transactions:
-        scanner.scan(tx)
-    end_time = time.time()
-    current, peak = tracemalloc.get_traced_memory()
-    
-    avg_scan_time = (end_time - start_time) / samples * 1000  # Convert to ms
-    legacy_baseline = 290  # ms
-    improvement = (legacy_baseline - avg_scan_time) / legacy_baseline * 100
-    
-    click.echo(f"Performance Benchmark Results:")
-    click.echo(f"  Samples processed: {samples:,}")
-    click.echo(f"  Average scan time: {avg_scan_time:.2f}ms")
-    click.echo(f"  Legacy baseline: {legacy_baseline}ms")
-    click.echo(f"  Performance improvement: {improvement:.1f}%")
-    click.echo(f"  Processing cost reduction: {improvement:.1f}%")
-    click.echo(f"  GLBA §314.4(c)(1) compliance: {'✓' if avg_scan_time < 50 else '✗'}")
-    click.echo(f"  GLBA §314.4(c)(3) device auth: {'✓' if 'device_fingerprint' in test_transactions[0] else '✗'}")
-    click.echo(f"  Peak memory usage: {peak / 10**6:.2f} MB")
+def setup_cli_logging(log_level: str) -> None:
+    """Set up CLI logging."""
+    setup_logging(level=log_level.upper())
 
-@cli.command()
-@click.option('--file', type=click.Path(exists=True), required=True, help='File to sign')
-@click.option('--quantum-safe', is_flag=True, help='Enable quantum-resistant crypto')
-@click.option('--password', prompt=True, hide_input=True, help='Password for key generation')
-def sign(file, quantum_safe, password):
-    """Sign transaction with quantum-safe crypto per GLBA §314.4(c)(2)."""
+
+@app.callback()
+def main(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Perform dry run without making changes"),
+    log_level: str = typer.Option("INFO", "--log-level", help="Set log level (DEBUG/INFO/WARNING/ERROR)"),
+    config_file: Optional[Path] = typer.Option(None, "--config", help="Path to configuration file")
+):
+    """ComplyChain - GLBA Compliance Toolkit."""
+    setup_cli_logging(log_level)
+    
+    if verbose:
+        console.print("[bold blue]ComplyChain[/bold blue] - GLBA Compliance Toolkit")
+        console.print(f"Log level: {log_level}")
+        console.print(f"Dry run: {dry_run}")
+        if config_file:
+            console.print(f"Config file: {config_file}")
+    
+    # Load configuration
     try:
-        # Read file content
-        with open(file, 'rb') as f:
-            tx_data = f.read()
+        config = get_config(config_file)
+        if verbose:
+            console.print(f"Configuration loaded: {config.get('compliance.mode')} mode")
+    except Exception as e:
+        console.print(f"[red]Configuration error: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def scan(
+    file: Path = typer.Argument(..., help="Transaction file to scan"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output file for results")
+):
+    """Scan a transaction for threats and compliance."""
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Scanning transaction...", total=None)
+            
+            # Load transaction
+            with open(file, 'r') as f:
+                transaction = json.load(f)
+            
+            # Initialize scanner
+            scanner = GLBAScanner()
+            
+            # Perform scan
+            result = scanner.scan(transaction)
+            
+            progress.update(task, completed=True)
         
-        # Initialize crypto engine with quantum-safe option
-        crypto = ComplyChainCrypto(pqc_enabled=quantum_safe)
-        
-        # Set password for key operations
-        crypto.set_password(password)
-        
-        # Generate keys if not already present
-        if not crypto.get_public_key():
-            click.echo("Initializing cryptographic keys...")
-            crypto.initialize_keys(password)
-        
-        # Sign the transaction data
-        signature, pub_key = crypto.sign(tx_data)
-        
-        # Output results
-        click.echo(f"Crypto Mode: {'Quantum-Safe (Dilithium3)' if quantum_safe else 'Traditional (RSA-4096)'}")
-        click.echo(f"Signature: {signature.hex()}")
-        click.echo(f"Public Key: {pub_key.hex()}")
-        click.echo(f"Signature Length: {len(signature)} bytes")
-        click.echo(f"Public Key Length: {len(pub_key)} bytes")
-        click.echo(f"GLBA §314.4(c)(2) Compliance: ✓")
-        
-        # Verify signature for validation
-        if crypto.verify(tx_data, signature, pub_key):
-            click.echo("Signature Verification: ✓ Valid")
+        # Display results
+        if output:
+            with open(output, 'w') as f:
+                json.dump(result, f, indent=2)
+            console.print(f"[green]Results saved to {output}[/green]")
         else:
-            click.echo("Signature Verification: ✗ Invalid")
-            raise click.ClickException("Signature verification failed")
+            console.print_json(data=result)
             
     except Exception as e:
-        raise click.ClickException(f"Signing failed: {str(e)}")
+        console.print(f"[red]Scan failed: {e}[/red]")
+        sys.exit(1)
 
-@cli.command()
-@click.option('--file', type=click.Path(exists=True), required=True, help='File to verify')
-@click.option('--signature', type=click.Path(exists=True), required=True, help='Signature file')
-@click.option('--public-key', type=click.Path(exists=True), required=True, help='Public key file')
-@click.option('--quantum-safe', is_flag=True, help='Enable quantum-resistant crypto')
-def verify(file, signature, public_key, quantum_safe):
-    """Verify signature with quantum-safe crypto per GLBA §314.4(c)(2)."""
+
+def _resolve_keys(signer: QuantumSafeSigner, key_dir: Path = None) -> Path:
+    """
+    Load keys from key_dir (or default ~/.complychain/keys/).
+    Generates and saves a new key pair if none exist yet.
+    Returns the key directory used.
+    """
+    from .crypto_engine import DEFAULT_KEY_DIR
+    keys_dir = Path(key_dir) if key_dir else DEFAULT_KEY_DIR
+    algo_slug = signer.algorithm.lower().replace('-', '_').replace('+', 'plus')
+    priv_path = keys_dir / f"private_key_{algo_slug}.pem"
+    pub_path = keys_dir / f"public_key_{algo_slug}.pem"
+
+    if priv_path.exists() and pub_path.exists():
+        signer.import_private_key_pem(priv_path.read_text())
+        signer.import_public_key_pem(pub_path.read_text())
+        console.print(f"[blue]Using existing keys from {keys_dir}[/blue]")
+    else:
+        console.print(f"[yellow]No keys found — generating new {signer.algorithm} key pair...[/yellow]")
+        signer.generate_keys()
+        keys_dir.mkdir(parents=True, exist_ok=True)
+        priv_path.write_text(signer.export_private_key_pem())
+        pub_path.write_text(signer.export_public_key_pem())
+        # Restrict private key permissions
+        priv_path.chmod(0o600)
+        console.print(f"[green]Keys saved to {keys_dir}[/green]")
+        console.print(f"  Private key: {priv_path}")
+        console.print(f"  Public key:  {pub_path}")
+
+    return keys_dir
+
+
+@app.command()
+def sign(
+    file: Path = typer.Argument(..., help="File to sign"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output signature file"),
+    key_dir: Optional[Path] = typer.Option(None, "--key-dir", help="Key directory (default: ~/.complychain/keys/)"),
+):
+    """Sign a file with quantum-safe cryptography (GLBA §314.4(c)(3))."""
     try:
-        # Read files
         with open(file, 'rb') as f:
-            tx_data = f.read()
-        with open(signature, 'rb') as f:
-            sig_data = f.read()
-        with open(public_key, 'rb') as f:
-            pub_key_data = f.read()
-        
-        # Initialize crypto engine
-        crypto = ComplyChainCrypto(pqc_enabled=quantum_safe)
-        
-        # Verify signature
-        is_valid = crypto.verify(tx_data, sig_data, pub_key_data)
+            data = f.read()
+
+        signer = QuantumSafeSigner()
+        _resolve_keys(signer, key_dir)
+
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task(f"Signing with {signer.algorithm}...", total=None)
+            signature = signer.sign(data)
+            progress.update(task, completed=True)
+
+        if output:
+            with open(output, 'wb') as f:
+                f.write(signature)
+            console.print(f"[green]Signature saved to {output}[/green]")
+        else:
+            console.print(f"[green]Signature generated: {len(signature)} bytes ({signer.algorithm})[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Signing failed: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def verify(
+    file: Path = typer.Argument(..., help="File to verify"),
+    signature: Path = typer.Argument(..., help="Signature file"),
+    public_key: Optional[Path] = typer.Option(None, "--public-key", help="Public key file")
+):
+    """Verify a file signature."""
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Verifying signature...", total=None)
+            
+            # Load files
+            with open(file, 'rb') as f:
+                data = f.read()
+            
+            with open(signature, 'rb') as f:
+                sig_data = f.read()
+            
+            # Initialize quantum-safe signer
+            signer = QuantumSafeSigner()
+            
+            # Verify signature
+            if public_key:
+                with open(public_key, 'rb') as f:
+                    pub_key = f.read()
+                is_valid = signer.verify(data, sig_data, pub_key)
+            else:
+                is_valid = signer.verify(data, sig_data)
+            
+            progress.update(task, completed=True)
         
         if is_valid:
-            click.echo("✓ Signature verification successful")
-            click.echo(f"Crypto Mode: {'Quantum-Safe (Dilithium3)' if quantum_safe else 'Traditional (RSA-4096)'}")
-            click.echo(f"GLBA §314.4(c)(2) Compliance: ✓")
+            console.print("[green]✓ Signature is valid[/green]")
         else:
-            click.echo("✗ Signature verification failed")
-            raise click.ClickException("Invalid signature")
+            console.print("[red]✗ Signature is invalid[/red]")
+            sys.exit(1)
             
     except Exception as e:
-        raise click.ClickException(f"Verification failed: {str(e)}")
+        console.print(f"[red]Verification failed: {e}[/red]")
+        sys.exit(1)
 
-if __name__ == '__main__':
-    cli() 
+
+@app.command()
+def report(
+    report_type: str = typer.Argument(..., help="Report type (daily/monthly/incident)"),
+    output: Path = typer.Option(..., "--output", "-o", help="Output PDF file")
+):
+    """Generate compliance reports."""
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Generating report...", total=None)
+            
+            # Initialize auditor
+            auditor = GLBAAuditor()
+            
+            # Generate report
+            pdf_bytes = auditor.generate_report(report_type)
+            
+            progress.update(task, completed=True)
+        
+        # Write PDF to output file
+        with open(output, 'wb') as f:
+            f.write(pdf_bytes)
+        console.print(f"[green]Report generated: {output}[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Report generation failed: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def audit(
+    action: str = typer.Argument(..., help="Audit action (verify/status)"),
+    audit_file: Optional[Path] = typer.Option(None, "--file", help="Audit log file")
+):
+    """Audit log operations (not available in this release)."""
+    console.print("[yellow]Audit log verification and status are not available in this release.[/yellow]")
+    sys.exit(0)
+
+
+@app.command()
+def train_model(
+    input_file: Path = typer.Argument(..., help="Training data file"),
+    validation_file: Optional[Path] = typer.Option(None, "--validation", help="Validation data file"),
+    model_path: Optional[Path] = typer.Option(None, "--model-path", help="Model output path")
+):
+    """Train ML model for threat detection."""
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Training ML model...", total=None)
+            
+            # Load training data
+            with open(input_file, 'r') as f:
+                training_data = json.load(f)
+            
+            validation_data = None
+            if validation_file:
+                with open(validation_file, 'r') as f:
+                    validation_data = json.load(f)
+            
+            # Initialize ML engine
+            ml_engine = MLEngine(model_path=model_path)
+            
+            # Train model
+            metrics = ml_engine.train(training_data, validation_data)
+            
+            progress.update(task, completed=True)
+        
+        # Display metrics
+        table = Table(title="Training Metrics")
+        table.add_column("Metric", style="cyan")
+        table.add_column("Value", style="magenta")
+        
+        for key, value in metrics.items():
+            table.add_row(key, f"{value:.4f}" if isinstance(value, float) else str(value))
+        
+        console.print(table)
+        console.print("[green]✓ Model training completed[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Model training failed: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def compliance(
+    action: str = typer.Argument(..., help="Compliance action (show/check)"),
+    config_file: Optional[Path] = typer.Option(None, "--config", help="Configuration file")
+):
+    """Compliance operations (partial support)."""
+    if action == "show":
+        config = get_config(config_file)
+        # Show compliance table as before
+        table = Table(title="GLBA Compliance Status")
+        table.add_column("Section", style="cyan")
+        table.add_column("Status", style="magenta")
+        table.add_column("Implementation", style="green")
+        glba_sections = [
+            ("§314.4(b)",    "Risk Assessment",                   "glba_engine"),
+            ("§314.4(c)(1)", "Access Controls",                   "threat_scanner"),
+            ("§314.4(c)(2)", "Data Inventory",                    "—"),
+            ("§314.4(c)(3)", "Data Encryption (FIPS 204)",        "crypto_engine"),
+            ("§314.4(c)(4)", "Secure Development Practices",      "pyproject.toml"),
+            ("§314.4(c)(5)", "Multi-Factor Authentication",       "—"),
+            ("§314.4(c)(6)", "Data Disposal",                     "—"),
+            ("§314.4(c)(7)", "Change Management",                 "—"),
+            ("§314.4(c)(8)", "Audit Trails & Activity Monitoring","audit_system"),
+            ("§314.4(d)",    "Testing and Monitoring",            "ml_engine"),
+            ("§314.4(e)",    "Employee Training",                 "—"),
+            ("§314.4(f)",    "Vendor Management",                 "—"),
+            ("§314.4(h)",    "Incident Response Plan",            "audit_system"),
+        ]
+        for section, description, module in glba_sections:
+            status = "✓" if config.get(f"compliance.{section}", False) else "⚠"
+            table.add_row(section, status, module)
+        console.print(table)
+    else:
+        console.print("[yellow]Compliance check is not available in this release.[/yellow]")
+        sys.exit(0)
+
+
+@app.command()
+def quantum_sign(
+    file: Path = typer.Argument(..., help="File to sign with quantum-safe cryptography"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Output signature file"),
+    algorithm: str = typer.Option("dilithium3", "--algorithm", "-a", help="Quantum algorithm (dilithium3/rsa)"),
+    key_dir: Optional[Path] = typer.Option(None, "--key-dir", help="Key directory (default: ~/.complychain/keys/)"),
+):
+    """Sign a file with FIPS 204 / ML-DSA (Dilithium3) or RSA-4096 fallback (GLBA §314.4(c)(3))."""
+    try:
+        with open(file, 'rb') as f:
+            data = f.read()
+
+        signer = QuantumSafeSigner(algorithm=algorithm.upper())
+        _resolve_keys(signer, key_dir)
+
+        with Progress(SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console) as progress:
+            task = progress.add_task(f"Signing with {signer.algorithm}...", total=None)
+            signature = signer.sign(data)
+            progress.update(task, completed=True)
+
+        if output:
+            with open(output, 'wb') as f:
+                f.write(signature)
+            console.print(f"[green]Quantum-safe signature saved to {output}[/green]")
+        else:
+            console.print(f"[green]Quantum-safe signature generated: {len(signature)} bytes ({signer.algorithm})[/green]")
+
+    except Exception as e:
+        console.print(f"[red]Quantum signing failed: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def quantum_verify(
+    file: Path = typer.Argument(..., help="File to verify"),
+    signature: Path = typer.Argument(..., help="Signature file"),
+    public_key: Optional[Path] = typer.Option(None, "--public-key", help="Public key file")
+):
+    """Verify a file signature with quantum-safe cryptography."""
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task("Verifying quantum-safe signature...", total=None)
+            
+            # Load files
+            with open(file, 'rb') as f:
+                data = f.read()
+            
+            with open(signature, 'rb') as f:
+                sig_data = f.read()
+            
+            # Initialize quantum-safe signer
+            signer = QuantumSafeSigner()
+            
+            # Verify signature
+            if public_key:
+                with open(public_key, 'rb') as f:
+                    pub_key = f.read()
+                is_valid = signer.verify(data, sig_data, pub_key)
+            else:
+                is_valid = signer.verify(data, sig_data)
+            
+            progress.update(task, completed=True)
+        
+        if is_valid:
+            console.print("[green]✓ Quantum-safe signature is valid[/green]")
+        else:
+            console.print("[red]✗ Quantum-safe signature is invalid[/red]")
+            console.print("[yellow]Note: If using fallback RSA, ensure you're using the correct public key[/yellow]")
+            sys.exit(1)
+            
+    except Exception as e:
+        console.print(f"[red]Quantum verification failed: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def quantum_keys(
+    action: str = typer.Argument(..., help="Key action (generate/export/import)"),
+    algorithm: str = typer.Option("dilithium3", "--algorithm", "-a", help="Quantum algorithm (dilithium3/falcon/sphincs+/rsa)"),
+    output_dir: Optional[Path] = typer.Option(None, "--output-dir", "-o", help="Output directory for keys"),
+    key_file: Optional[Path] = typer.Option(None, "--key-file", "-k", help="Key file for import/export")
+):
+    """Manage quantum-safe cryptographic keys."""
+    try:
+        signer = QuantumSafeSigner(algorithm=algorithm.upper())
+        
+        if action == "generate":
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console
+            ) as progress:
+                task = progress.add_task(f"Generating {algorithm} keys...", total=None)
+                
+                # Generate key pair
+                private_key, public_key = signer.generate_keys()
+                
+                progress.update(task, completed=True)
+            
+            # Save keys
+            if output_dir:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                private_path = output_dir / f"private_key_{algorithm}.pem"
+                public_path = output_dir / f"public_key_{algorithm}.pem"
+                
+                with open(private_path, 'wb') as f:
+                    f.write(private_key)
+                with open(public_path, 'wb') as f:
+                    f.write(public_key)
+                
+                console.print(f"[green]Keys generated and saved to {output_dir}[/green]")
+                console.print(f"Private key: {private_path}")
+                console.print(f"Public key: {public_path}")
+            else:
+                console.print(f"[green]{algorithm.upper()} keys generated[/green]")
+                console.print(f"Private key: {len(private_key)} bytes")
+                console.print(f"Public key: {len(public_key)} bytes")
+        
+        elif action == "export":
+            if not key_file:
+                console.print("[red]Key file required for export[/red]")
+                sys.exit(1)
+            
+            with open(key_file, 'rb') as f:
+                key_data = f.read()
+            
+            # Export in PEM format
+            pem_data = signer.export_public_key_pem()
+            
+            if output_dir:
+                output_dir.mkdir(parents=True, exist_ok=True)
+                export_path = output_dir / f"exported_key_{algorithm}.pem"
+                with open(export_path, 'wb') as f:
+                    f.write(pem_data.encode())
+                console.print(f"[green]Key exported to {export_path}[/green]")
+            else:
+                console.print("[green]Key exported in PEM format[/green]")
+                console.print(pem_data)
+        
+        elif action == "import":
+            if not key_file:
+                console.print("[red]Key file required for import[/red]")
+                sys.exit(1)
+            
+            with open(key_file, 'rb') as f:
+                key_data = f.read()
+            
+            # Import key
+            signer.import_public_key_pem(key_data.decode())
+            console.print(f"[green]Key imported successfully[/green]")
+        
+        else:
+            console.print("[red]Invalid action. Use: generate, export, or import[/red]")
+            sys.exit(1)
+            
+    except Exception as e:
+        console.print(f"[red]Key operation failed: {e}[/red]")
+        sys.exit(1)
+
+
+@app.command()
+def benchmark(
+    samples: int = typer.Option(100, "--samples", "-s", help="Number of samples to test"),
+    algorithm: str = typer.Option("dilithium3", "--algorithm", "-a", help="Algorithm to benchmark")
+):
+    """Run performance benchmarks for quantum-safe cryptography."""
+    try:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console
+        ) as progress:
+            task = progress.add_task(f"Running {algorithm} benchmarks...", total=samples)
+            
+            signer = QuantumSafeSigner(algorithm=algorithm.upper())
+            
+            # Generate test data
+            test_data = b"benchmark_test_data" * 1000
+            
+            # Benchmark key generation
+            key_gen_times = []
+            for i in range(min(samples, 10)):  # Limit key generation tests
+                start_time = time.time()
+                signer.generate_keys()
+                key_gen_times.append(time.time() - start_time)
+                progress.update(task, advance=1)
+            
+            # Benchmark signing
+            sign_times = []
+            for i in range(samples):
+                start_time = time.time()
+                signer.sign(test_data)
+                sign_times.append(time.time() - start_time)
+                progress.update(task, advance=1)
+            
+            progress.update(task, completed=True)
+        
+        # Calculate statistics
+        avg_key_gen = sum(key_gen_times) / len(key_gen_times)
+        avg_sign = sum(sign_times) / len(sign_times)
+        
+        # Display results
+        table = Table(title=f"{algorithm.upper()} Performance Benchmark")
+        table.add_column("Operation", style="cyan")
+        table.add_column("Average Time (ms)", style="magenta")
+        table.add_column("Samples", style="green")
+        
+        table.add_row("Key Generation", f"{avg_key_gen*1000:.2f}", str(len(key_gen_times)))
+        table.add_row("Signing", f"{avg_sign*1000:.2f}", str(len(sign_times)))
+        
+        console.print(table)
+        console.print("[green]✓ Benchmark completed[/green]")
+        
+    except Exception as e:
+        console.print(f"[red]Benchmark failed: {e}[/red]")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    app() 

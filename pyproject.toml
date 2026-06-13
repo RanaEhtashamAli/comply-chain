@@ -84,7 +84,7 @@ docs = [
 ]
 
 [project.scripts]
-complychain = "complychain.cli_enhanced:app"
+complychain = "complychain.cli:app"
 
 [project.urls]
 Homepage = "https://github.com/RanaEhtashamAli/comply-chain"

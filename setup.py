@@ -89,7 +89,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "complychain=complychain.cli_enhanced:app",
+            "complychain=complychain.cli:app",
         ],
     },
     include_package_data=True,

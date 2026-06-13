@@ -68,7 +68,7 @@ class TestCLICommands:
     @pytest.mark.cli
     def test_cli_import(self):
         """Test that CLI can be imported and has commands."""
-        from complychain.cli_enhanced import app
+        from complychain.cli import app
         
         # Check that app has commands
         assert hasattr(app, 'registered_commands')
@@ -84,7 +84,7 @@ class TestCLICommands:
     @pytest.mark.cli
     def test_quantum_commands_exist(self):
         """Test that quantum-safe commands are available."""
-        from complychain.cli_enhanced import app
+        from complychain.cli import app
         
         command_names = [cmd.callback.__name__ for cmd in app.registered_commands if hasattr(cmd, 'callback') and cmd.callback is not None]
         
@@ -97,7 +97,7 @@ class TestCLICommands:
     @pytest.mark.cli
     def test_cli_structure(self):
         """Test CLI structure and command definitions."""
-        from complychain.cli_enhanced import app
+        from complychain.cli import app
         
         # Test that all commands have proper structure
         for cmd in app.registered_commands:
@@ -107,13 +107,13 @@ class TestCLICommands:
     @pytest.mark.cli
     def test_cli_callback(self):
         """Test CLI callback function."""
-        from complychain.cli_enhanced import main
+        from complychain.cli import main
         
         # Test that main function exists and is callable
         assert callable(main)
         
         # Test with minimal arguments
-        with patch('complychain.cli_enhanced.console.print'):
+        with patch('complychain.cli.console.print'):
             main(verbose=False, dry_run=False, log_level="INFO", config_file=None)
 
 
@@ -123,49 +123,49 @@ class TestCLIErrorHandling:
     @pytest.mark.cli
     def test_scan_function_exists(self):
         """Test that scan function exists and is callable."""
-        from complychain.cli_enhanced import scan
+        from complychain.cli import scan
         
         assert callable(scan)
     
     @pytest.mark.cli
     def test_sign_function_exists(self):
         """Test that sign function exists and is callable."""
-        from complychain.cli_enhanced import sign
+        from complychain.cli import sign
         
         assert callable(sign)
     
     @pytest.mark.cli
     def test_verify_function_exists(self):
         """Test that verify function exists and is callable."""
-        from complychain.cli_enhanced import verify
+        from complychain.cli import verify
         
         assert callable(verify)
     
     @pytest.mark.cli
     def test_quantum_sign_function_exists(self):
         """Test that quantum_sign function exists and is callable."""
-        from complychain.cli_enhanced import quantum_sign
+        from complychain.cli import quantum_sign
         
         assert callable(quantum_sign)
     
     @pytest.mark.cli
     def test_quantum_verify_function_exists(self):
         """Test that quantum_verify function exists and is callable."""
-        from complychain.cli_enhanced import quantum_verify
+        from complychain.cli import quantum_verify
         
         assert callable(quantum_verify)
     
     @pytest.mark.cli
     def test_quantum_keys_function_exists(self):
         """Test that quantum_keys function exists and is callable."""
-        from complychain.cli_enhanced import quantum_keys
+        from complychain.cli import quantum_keys
         
         assert callable(quantum_keys)
     
     @pytest.mark.cli
     def test_benchmark_function_exists(self):
         """Test that benchmark function exists and is callable."""
-        from complychain.cli_enhanced import benchmark
+        from complychain.cli import benchmark
         
         assert callable(benchmark)
 
@@ -176,7 +176,7 @@ class TestCLIArgumentValidation:
     @pytest.mark.cli
     def test_scan_function_signature(self, temp_files):
         """Test scan function signature."""
-        from complychain.cli_enhanced import scan
+        from complychain.cli import scan
         
         # Test that function accepts expected arguments
         import inspect
@@ -189,7 +189,7 @@ class TestCLIArgumentValidation:
     @pytest.mark.cli
     def test_sign_function_signature(self, temp_files):
         """Test sign function signature."""
-        from complychain.cli_enhanced import sign
+        from complychain.cli import sign
         
         # Test that function accepts expected arguments
         import inspect
@@ -202,7 +202,7 @@ class TestCLIArgumentValidation:
     @pytest.mark.cli
     def test_quantum_sign_function_signature(self, temp_files):
         """Test quantum_sign function signature."""
-        from complychain.cli_enhanced import quantum_sign
+        from complychain.cli import quantum_sign
         
         # Test that function accepts expected arguments
         import inspect
@@ -216,7 +216,7 @@ class TestCLIArgumentValidation:
     @pytest.mark.cli
     def test_quantum_keys_function_signature(self, temp_files):
         """Test quantum_keys function signature."""
-        from complychain.cli_enhanced import quantum_keys
+        from complychain.cli import quantum_keys
         
         # Test that function accepts expected arguments
         import inspect
@@ -235,7 +235,7 @@ class TestCLIOutputFormat:
     @pytest.mark.cli
     def test_cli_app_structure(self):
         """Test that CLI app has proper structure."""
-        from complychain.cli_enhanced import app
+        from complychain.cli import app
         
         # Test app properties
         assert hasattr(app, 'info')
@@ -245,7 +245,7 @@ class TestCLIOutputFormat:
     @pytest.mark.cli
     def test_cli_help_text(self):
         """Test CLI help text structure."""
-        from complychain.cli_enhanced import app
+        from complychain.cli import app
         
         # Test that app has help text
         if hasattr(app, 'info') and app.info:
@@ -256,7 +256,7 @@ class TestCLIOutputFormat:
     @pytest.mark.cli
     def test_command_help_text(self):
         """Test command help text structure."""
-        from complychain.cli_enhanced import app
+        from complychain.cli import app
         
         # Test that commands have help text
         for cmd in app.registered_commands:
@@ -272,7 +272,7 @@ class TestCLIIntegration:
     def test_cli_imports_core_modules(self):
         """Test that CLI can import all required core modules."""
         try:
-            from complychain.cli_enhanced import app
+            from complychain.cli import app
             from complychain.crypto_engine import QuantumSafeSigner
             from complychain.threat_scanner import GLBAScanner
             from complychain.audit_system import GLBAAuditor
@@ -286,7 +286,7 @@ class TestCLIIntegration:
     @pytest.mark.cli
     def test_cli_quantum_safe_integration(self):
         """Test that CLI integrates with quantum-safe cryptography."""
-        from complychain.cli_enhanced import quantum_sign, quantum_verify, quantum_keys
+        from complychain.cli import quantum_sign, quantum_verify, quantum_keys
         from complychain.crypto_engine import QuantumSafeSigner
         
         # Test that functions can create QuantumSafeSigner instances

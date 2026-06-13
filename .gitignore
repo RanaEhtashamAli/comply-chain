@@ -143,7 +143,7 @@ models/*.pkl
 models/model_metadata.json
 
 # CLI build artifact
-complychain/cli_enhanced.zip
+complychain/cli.zip
 
 # Audit chain (instance-specific runtime data)
 audit_chain/
