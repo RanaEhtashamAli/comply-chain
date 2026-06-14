@@ -230,3 +230,9 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ] 
 
+[dependency-groups]
+dev = [
+    "build>=1.4.4",
+    "twine>=6.2.0",
+]
+
