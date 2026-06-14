@@ -1,668 +1,453 @@
 # ComplyChain
 
-**Enterprise-Grade GLBA §314.4 Compliance Toolkit with Quantum-Safe Cryptography**
+**Multi-Regulation Compliance Toolkit with Quantum-Safe Cryptography**
 
-> 🚀 **ComplyChain** is an open-source GLBA §314.4 compliance toolkit featuring post-quantum cryptography (ML-DSA-65 / NIST FIPS 204), real-time ML threat detection, blockchain-style audit trails, and automated reporting — at 90% lower cost than legacy solutions.
+ComplyChain is an open-source Python library for financial compliance engineering. It covers GLBA §314.4, PCI-DSS 4.0, DORA, and SOC 2 — with post-quantum cryptography (ML-DSA-65 / NIST FIPS 204), ML-based anomaly detection, Merkle-chained audit trails, and a webhook event system.
 
 - 📦 PyPI: [`pip install complychain`](https://pypi.org/project/complychain/)
-- 📄 [White Paper (PDF)](./docs/ComplyChain%20White%20Paper.pdf)
-- 🔐 Quantum-Safe | GLBA §314.4 | FIPS 204 | FinCEN Integrated
 - 🌐 GitHub: [github.com/RanaEhtashamAli/comply-chain](https://github.com/RanaEhtashamAli/comply-chain)
-
+- 📄 [White Paper (PDF)](./docs/ComplyChain%20White%20Paper.pdf)
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![GLBA](https://img.shields.io/badge/GLBA-§314.4-green.svg)](https://www.ftc.gov/business-guidance/privacy-security/gramm-leach-bliley-act)
-[![FIPS](https://img.shields.io/badge/FIPS-203%20Level%203-blue.svg)](https://www.nist.gov/news-events/news/2023/08/nist-announces-first-four-quantum-resistant-cryptographic-algorithms)
-
-ComplyChain is a production-ready compliance toolkit that enables financial institutions to achieve **GLBA §314.4 Safeguards Rule** compliance at **10% of current costs** while implementing **quantum-resistant cryptography** for long-term security.
-
-## 🎯 **Regulatory Compliance**
-
-ComplyChain implements comprehensive **GLBA §314.4 Safeguards Rule** requirements:
-
-| GLBA Requirement | Section | Module | Implementation |
-|------------------|---------|--------|----------------|
-| **Access Controls** | §314.4(c)(1) | `crypto_engine` | Key management and access enforcement |
-| **Data Encryption** | §314.4(c)(3) | `crypto_engine` | FIPS 204 / ML-DSA quantum-resistant cryptography |
-| **Audit Trails** | §314.4(c)(8) | `audit_system` | Blockchain-style Merkle chain audit logs |
-| **Incident Response** | §314.4(h) | `audit_system` | Automated alerting and IR plan enforcement |
-| **Employee Training** | §314.4(e) | `threat_scanner` | ML-based compliance scoring |
-| **Vendor Management** | §314.4(f) | `threat_scanner` | Sanctions screening (OFAC/FinCEN) |
-
-## 📊 **Performance Benchmark**
-
-| Feature | U.S. Legacy Vendor | ComplyChain | Improvement |
-|---------|-------------------|-------------|-------------|
-| **Scan time (per tx)** | 500ms | **<50ms** | **10x faster** |
-| **Signature generation** | 500ms | **<100ms** | **5x faster** |
-| **Audit report generation** | 2 min | **<5s** | **24x faster** |
-| **Annual cost** | $100,000+ | **$9,999** | **90% cost reduction** |
-
-## ✨ **Features**
-
-- ✅ **Real-time transaction scanning** (GLBA §314.4(c)(8))
-- 🔐 **Quantum-safe signature generation** (GLBA §314.4(c)(3))
-- 🖥 **Blockchain-style audit logging** (GLBA §314.4(c)(8))
-- 📈 **PDF report generation in seconds**
-- ⚙️ **Docker support for deployment**
-- 🔄 **Automated incident detection and response**
-- 🌐 **FinCEN API integration** for sanctions screening
-- 🛡️ **FIPS 140-3 Level 1** aligned (designed to meet Level 1 requirements)
-- 🔒 **OWASP 2024** security parameters
-- 📋 **Comprehensive compliance reporting**
-
-## 🚀 **Installation + Quickstart**
-
-### Prerequisites
-- Python 3.9+
-- Docker (optional, for containerized deployment)
-
-### Environment Variables
-
-ComplyChain supports configuration via environment variables. The most important ones:
-
-| Variable | Purpose | Required | Default |
-|----------|---------|----------|---------|
-| `COMPLYCHAIN_FINCEN_API_KEY` | FinCEN API key for sanctions screening | **Yes** (if using FinCEN) | None |
-| `COMPLYCHAIN_LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | No | `INFO` |
-| `COMPLYCHAIN_QUANTUM_SAFE_ENABLED` | Enable quantum-safe cryptography | No | `true` |
-| `COMPLYCHAIN_COMPLIANCE_MODE` | Compliance mode (enabled/strict) | No | `enabled` |
-| `COMPLYCHAIN_TEST_MODE` | Enable test mode for faster performance | No | `0` |
-| `COMPLYCHAIN_KEY_ROTATION_ENABLED` | Enable automatic key rotation | No | `false` |
-
-**Docker-specific variables:**
-| Variable | Purpose | Required | Default |
-|----------|---------|----------|---------|
-| `QUANTUM_SAFE_ENABLED` | Docker quantum-safe flag | No | `true` |
-| `GLBA_COMPLIANCE_MODE` | Docker GLBA compliance mode | No | `strict` |
-| `COMPLIANCE_MODE` | Docker compliance mode | No | `enabled` |
-| `KEY_ROTATION_ENABLED` | Docker key rotation flag | No | `false` |
-
-**Quick Setup:**
-```bash
-# Required for FinCEN integration
-export COMPLYCHAIN_FINCEN_API_KEY="your_fincen_api_key"
-
-# Optional: Customize behavior
-export COMPLYCHAIN_LOG_LEVEL="DEBUG"
-export COMPLYCHAIN_QUANTUM_SAFE_ENABLED="true"
-export COMPLYCHAIN_TEST_MODE="1"  # For faster test execution
-```
-
-### Installation
-```bash
-# Install from PyPI
-pip install complychain
-
-# Or install from source
-git clone https://github.com/RanaEhtashamAli/comply-chain.git
-cd comply-chain
-pip install -e .
-```
-
-### Quick Start
-```bash
-# To scan a transaction for threats and compliance:
-complychain scan --file transaction.json
-
-# To generate quantum-safe signature:
-complychain sign --file transaction.json --quantum-safe
-
-# To generate compliance report:
-complychain report --type monthly --output glba_report.pdf
-
-# To run performance benchmark:
-complychain benchmark --samples 10000
-```
-
-## 💻 **CLI Usage**
-
-### Transaction Scanning
-```bash
-# To perform basic threat scan:
-complychain scan --file transaction.json
-
-# To perform quantum-safe threat scan:
-complychain scan --file transaction.json --quantum-safe
-```
-
-### Cryptographic Operations
-```bash
-# To sign with quantum-safe cryptography:
-complychain sign --file data.json --quantum-safe
-
-# To verify signature:
-complychain verify --file data.json --signature sig.bin --public-key pub.bin --quantum-safe
-
-# New: Quantum-safe specific commands
-# Generate ML-DSA-65 keys (NIST FIPS 204):
-complychain quantum-keys generate --output-dir ./keys
-
-# Sign with quantum-safe cryptography:
-complychain quantum-sign --file data.json
-
-# Verify quantum-safe signature:
-complychain quantum-verify --file data.json --signature sig.bin --public-key pub.pem
-```
-
-### Compliance Reporting
-```bash
-# To generate daily compliance report:
-complychain report --type daily --output daily_report.pdf
-
-# To generate monthly compliance report:
-complychain report --type monthly --output monthly_report.pdf
-
-# To generate incident compliance report:
-complychain report --type incident --output incident_report.pdf
-```
-
-### Sample Scan Output
-```json
-{
-  "risk_score": 82,
-  "threat_flags": [
-    "HIGH_VALUE_TRANSACTION",
-    "CROSS_BORDER_TRANSFER",
-    "WIRE_TRANSFER_MONITORING"
-  ],
-  "fincen_compliance": {
-    "ctr_required": false,
-    "sar_required": true,
-    "wire_monitoring": true,
-    "structuring_detected": false,
-    "sanctions_match": false
-  },
-  "crypto_mode": "quantum-safe",
-  "crypto_algorithm": "ML-DSA-65",
-  "currency": "USD",
-  "compliance_requirements": [
-    "GLBA_314_4_c_1_HIGH_VALUE_MONITORING",
-    "GLBA_314_4_c_3_DEVICE_AUTHENTICATION",
-    "FINCEN_WIRE_MONITORING"
-  ]
-}
-```
-
-## 🐳 **Docker Support**
-
-### Quick Deployment
-```bash
-# To build and run with Docker:
-docker build -t complychain .
-docker run -v /audit_chain:/audit_chain complychain
-
-# To deploy with Docker Compose:
-docker-compose up -d
-```
-
-### Production Deployment
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  complychain:
-    build: .
-    volumes:
-      - ./audit_chain:/audit_chain
-      - ./keys:/keys
-    environment:
-      - GLBA_COMPLIANCE_MODE=enabled
-      - QUANTUM_SAFE_ENABLED=true
-    ports:
-      - "8080:8080"
-```
-
-## 🔐 **Quantum-Safe Cryptography**
-
-ComplyChain implements **NIST FIPS 204** (ML-DSA) quantum-resistant cryptography with **ML-DSA-65** as the primary algorithm and **RSA-4096** as a fallback.
-
-### **🔄 Fallback Strategy**
-
-ComplyChain uses a **smart fallback system** to ensure your application always works, even when quantum-safe libraries aren't available:
-
-#### **Automatic Fallback Behavior**
-```
-Quantum-Safe (ML-DSA-65 / FIPS 204) → RSA-4096 → Error Handling
-```
-
-**What happens when you see this message:**
-```
-liboqs not available — falling back to RSA-4096. Install liboqs-python + liboqs C library for FIPS 204 / ML-DSA support.
-```
-
-**This means:**
-- ✅ **Your application continues to work** with RSA-4096 (still very secure)
-- ✅ **No data loss or functionality issues**
-- ⚠️ **You're not using quantum-safe cryptography** (but still cryptographically secure)
-
-#### **How to Enable True Quantum-Safe Cryptography**
-
-**Option 1: Install liboqs-python (Recommended)**
-```bash
-# On Ubuntu/Debian — install build dependencies first, then pip handles the rest
-sudo apt-get install cmake build-essential ninja-build libssl-dev
-pip install liboqs-python
-
-# On macOS
-brew install cmake
-pip install liboqs-python
-
-# On Windows — install cmake from https://cmake.org/download/ then:
-pip install liboqs-python
-
-# Verify installation
-python -c "import oqs; print('✓ liboqs available:', oqs.get_enabled_sig_mechanisms()[:3])"
-```
-
-**Option 2: Use Docker with Quantum Support**
-```bash
-# Build quantum-enabled image
-docker build -f Dockerfile.oqs -t complychain-quantum .
-
-# Run with quantum-safe enabled
-docker run -v /audit_chain:/audit_chain \
-  -e QUANTUM_SAFE_ENABLED=true \
-  complychain-quantum
-```
-
-**Option 3: Manual liboqs Installation**
-```bash
-# Clone and build liboqs
-git clone https://github.com/open-quantum-safe/liboqs.git
-cd liboqs
-mkdir build && cd build
-cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
-make -j$(nproc)
-sudo make install
-
-# Install Python bindings
-pip install liboqs-python
-```
-
-#### **Verification Commands**
-
-**Check if quantum-safe is working:**
-```bash
-# Test quantum-safe key generation
-python -c "
-from complychain.crypto_engine import QuantumSafeSigner
-signer = QuantumSafeSigner()
-signer.generate_keys()
-print('✓ Quantum-safe cryptography enabled')
-"
-
-# Check available algorithms
-python -c "
-from complychain.crypto_engine import QuantumSafeSigner
-signer = QuantumSafeSigner()
-print('Available algorithms:', signer.get_available_algorithms())
-"
-```
-
-**Expected output with quantum-safe:**
-```
-✓ Quantum-safe cryptography enabled
-Available algorithms: ['ml-dsa-65', 'falcon-512', 'falcon-1024', 'rsa-4096']
-```
-
-**Expected output with fallback (no liboqs):**
-```
-liboqs not available — falling back to RSA-4096
-Available algorithms: ['rsa-4096']
-```
-
-### **Quantum-Safe Features**
-
-#### **ML-DSA-65 Implementation (NIST FIPS 204)**
-- **NIST Standard**: FIPS 204 — Module-Lattice-Based Digital Signature (ML-DSA)
-- **Security Level**: NIST Level 3 (roughly 128-bit quantum security)
-- **Key Sizes**: ~1952 bytes (public), ~4000 bytes (private)
-- **Signature Size**: ~3366 bytes
-- **Performance**: Optimized for production use via liboqs C library
-
-#### **Fallback Mechanism**
-- **Automatic fallback** to RSA-4096 if liboqs is unavailable
-- **Seamless integration** with existing workflows
-- **Warning logs** when quantum backend is unavailable
-- **Backward compatibility** with legacy systems
-
-#### **Key Management**
-- **PEM format support** for HSM integration
-- **Export/import functionality** for key rotation
-- **Memory protection** with secure zeroization
-- **FIPS 140-3 compliance** for key storage
-
-### **Installation Options**
-
-```bash
-# Standard installation (RSA-4096 fallback — no extra dependencies)
-pip install complychain
-
-# With quantum-safe support (ML-DSA-65 via liboqs + FIPS 204)
-# First install build dependencies (see above), then:
-pip install complychain liboqs-python
-```
-
-### **Docker with Quantum Support**
-
-```bash
-# Build with quantum-safe support
-docker build -f Dockerfile.oqs -t complychain-quantum .
-
-# Run with quantum-safe enabled
-docker run -v /audit_chain:/audit_chain \
-  -e QUANTUM_SAFE_ENABLED=true \
-  complychain-quantum
-```
-
-## 🔧 **Architecture**
-
-### Core Modules
-
-#### **Threat Scanner** (`threat_scanner.py`)
-- **Real-time ML anomaly detection** using Isolation Forest
-- **FinCEN API integration** for sanctions screening
-- **USD compliance thresholds** ($10,000 CTR, $3,000 wire monitoring)
-- **Structuring detection** and suspicious activity reporting
-
-#### **Crypto Engine** (`crypto_engine.py`)
-- **Hybrid cryptography**: ML-DSA-65 / NIST FIPS 204 (quantum-safe) → RSA-4096 (fallback)
-- **FIPS 140-3 Level 1** aligned (designed to meet Level 1 requirements)
-- **QuantumSafeSigner class**: Dedicated quantum-safe signature operations
-- **PEM format support**: Export/import keys for HSM integration
-- **liboqs integration**: Open Quantum Safe library (auto-builds from source via pip)
-- **OWASP 2024 parameters**: SCRYPT_N=16384, SCRYPT_R=8, AES-GCM-256 key storage
-- **Secure memory management** with zeroization
-- **NIST FIPS 204** (ML-DSA-65) — backward compatible with Dilithium3 keystores
-
-#### **Audit System** (`audit_system.py`)
-- **Blockchain-style audit trails** with Merkle trees
-- **Cryptographic chaining** for integrity
-- **PDF report generation** with compliance matrices
-- **Real-time monitoring** and alerting
-
-## 🛡️ **Security Features**
-
-### **Quantum-Safe Cryptography**
-- **CRYSTALS-Dilithium Level 3** (NIST FIPS 204)
-- **RSA-4096 fallback** for legacy compatibility
-- **Hybrid deployment** for gradual migration
-
-### **Memory Security**
-- **FIPS 140-3 Level 1** aligned memory protection
-- **Secure zeroization** using `ctypes.memset`
-- **Memory locking** with `mlock/munlock`
-- **Reference tracking** for cleanup
-
-### **Key Management**
-- **AES-GCM-256** encrypted key storage
-- **Scrypt key derivation** (OWASP 2024)
-- **Atomic file operations** with `tempfile`
-- **Weak key detection** and prevention
-
-## 📋 **Compliance Standards**
-
-### **GLBA §314.4 Implementation**
-- ✅ **§314.4(b)**: Risk assessment and classification
-- ✅ **§314.4(c)(1)**: Access controls and key management
-- ✅ **§314.4(c)(3)**: Data encryption (FIPS 204 / ML-DSA)
-- ✅ **§314.4(c)(8)**: Audit trails and activity monitoring
-- ✅ **§314.4(e)**: Employee training and compliance scoring
-- ✅ **§314.4(f)**: Vendor management and sanctions screening
-- ✅ **§314.4(h)**: Incident response and automated alerting
-
-### **Additional Standards**
-- **NIST FIPS 204**: Post-quantum cryptography
-- **NIST SP 800-131A**: Key management
-- **OWASP 2024**: Security parameters
-- **FinCEN BSA**: Bank Secrecy Act compliance
-
-## 🌍 **Community Impact**
-
-### **Financial Inclusion**
-- **Reduces compliance costs by 85%** for community banks (FDIC 2024)
-- **Enables secure fintech access** for underserved communities
-- **Democratizes quantum-safe security** for small institutions
-
-### **Fraud Prevention**
-- **Prevents $4.2B in annual payment fraud** (FTC 2023)
-- **Real-time sanctions screening** via FinCEN APIs
-- **Automated suspicious activity detection**
-
-### **Infrastructure Security**
-- **Quantum-resistant security** for critical financial infrastructure
-- **Long-term cryptography** for persistent data protection
-- **Regulatory compliance** without vendor lock-in
-
-*Based on FDIC 2024 and FTC 2023 report on payment fraud.*
-
-## 🤝 **Contributing**
-
-We welcome contributions from the community! See our [Contribution Guide](CONTRIBUTING.md) for details.
-
-### **Development Setup**
-```bash
-# To clone repository:
-git clone https://github.com/RanaEhtashamAli/comply-chain.git
-cd complychain
-
-# To install development dependencies:
-pip install -r requirements.txt
-pip install -e .
-
-# To run comprehensive tests:
-python -m pytest complychain/tests/ -v
-
-# To run quick test suite:
-python complychain/tests/test_quick.py
-```
-
-### **Code Quality**
-- **Type hints** throughout codebase
-- **Comprehensive test coverage** (>80%)
-- **Security-focused development** practices
-- **Regulatory compliance** validation
-
-## 📄 **License**
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
-## 🔧 **Troubleshooting**
-
-### **Quantum-Safe Cryptography Issues**
-
-#### **Problem**: "liboqs-python not available - falling back to RSA-4096"
-**What it means**: Your system doesn't have quantum-safe cryptography libraries installed.
-
-**Solutions** (in order of preference):
-1. **Install liboqs-python** (Recommended):
-   ```bash
-   # Ubuntu/Debian — liboqs-python auto-builds the C library if cmake is present
-   sudo apt-get install cmake build-essential ninja-build libssl-dev
-   pip install liboqs-python
-
-   # macOS
-   brew install cmake
-   pip install liboqs-python
-
-   # Windows — install cmake from https://cmake.org/download/ then:
-   pip install liboqs-python
-   ```
-
-2. **Use Docker with quantum support**:
-   ```bash
-   docker build -f Dockerfile.oqs -t complychain-quantum .
-   docker run -e QUANTUM_SAFE_ENABLED=true complychain-quantum
-   ```
-
-3. **Continue with RSA-4096** (still secure):
-   - Your application will work fine with RSA-4096
-   - No action needed - this is a safe fallback
-
-#### **Problem**: "ML-DSA-65 key generation fails" or liboqs import errors
-**Solutions**:
-1. **Verify liboqs installation**:
-   ```bash
-   python -c "import oqs; print('✓ liboqs available:', oqs.get_enabled_sig_mechanisms()[:3])"
-   ```
-
-2. **Install missing build dependencies** (liboqs-python builds the C library from source):
-   ```bash
-   # Ubuntu/Debian
-   sudo apt-get install cmake build-essential ninja-build libssl-dev
-   pip install --force-reinstall liboqs-python
-
-   # macOS
-   brew install cmake
-   pip install --force-reinstall liboqs-python
-   ```
-
-#### **Problem**: "No private key available - call generate_keys() first"
-**Solution**: Generate keys before signing:
-```bash
-# Using CLI
-complychain quantum-keys generate --output-dir ./keys
-
-# Using Python
-from complychain.crypto_engine import QuantumSafeSigner
-signer = QuantumSafeSigner()
-signer.generate_keys()  # This is required first
-signature = signer.sign(data)
-```
-
-#### **Problem**: "Signature verification fails"
-**Solutions**:
-1. **Check algorithm compatibility**:
-   ```bash
-   # Verify you're using the same algorithm
-   python -c "
-   from complychain.crypto_engine import QuantumSafeSigner
-   signer = QuantumSafeSigner()
-   print('Current algorithm:', signer.algorithm)
-   "
-   ```
-
-2. **Regenerate keys**:
-   ```bash
-   # Clear old keys and regenerate
-   rm -rf ~/.complychain/keys/
-   complychain quantum-keys generate
-   ```
-
-3. **Check file integrity**:
-   ```bash
-   # Ensure the file hasn't changed
-   sha256sum your_file.txt
-   ```
-
-### **Performance Issues**
-
-#### **Problem**: "Scan time exceeds 50ms requirement"
-**Solutions**:
-1. **Enable test mode** for faster performance:
-   ```bash
-   export COMPLYCHAIN_TEST_MODE=1
-   python -m pytest complychain/tests/ -v
-   ```
-
-2. **Check sanctions API connectivity**:
-   ```bash
-   # Test API connectivity
-   curl -I https://api.fincen.gov
-   ```
-
-3. **Use cached sanctions data**:
-   - ComplyChain automatically caches sanctions data
-   - First run may be slower, subsequent runs are faster
-
-### **Installation Issues**
-
-#### **Problem**: "ModuleNotFoundError: No module named 'complychain'"
-**Solutions**:
-1. **Install in development mode**:
-   ```bash
-   pip install -e .
-   ```
-
-2. **Check Python path**:
-   ```bash
-   python -c "import sys; print(sys.path)"
-   ```
-
-3. **Verify installation**:
-   ```bash
-   pip list | grep complychain
-   ```
-
-#### **Problem**: "PyPDF2 deprecation warnings"
-**Solution**: This is just a warning, not an error. PyPDF2 still works:
-```bash
-# Ignore the warning (safe to do)
-export PYTHONWARNINGS="ignore::DeprecationWarning"
-```
-
-### **Configuration Issues**
-
-#### **Problem**: "Configuration file not found"
-**Solutions**:
-1. **Create default config**:
-   ```bash
-   cp config.yaml.example config.yaml
-   ```
-
-2. **Use environment variables**:
-   ```bash
-   export COMPLYCHAIN_LOG_LEVEL=DEBUG
-   export COMPLYCHAIN_QUANTUM_SAFE_ENABLED=true
-   ```
-
-3. **Specify config file**:
-   ```bash
-   complychain --config /path/to/config.yaml
-   ```
-
-### **Docker Issues**
-
-#### **Problem**: "Docker build fails"
-**Solutions**:
-1. **Use the correct Dockerfile**:
-   ```bash
-   # For quantum support
-   docker build -f Dockerfile.oqs .
-   
-   # For standard build
-   docker build -f Dockerfile .
-   ```
-
-2. **Check Docker resources**:
-   ```bash
-   # Ensure enough memory/CPU
-   docker system info
-   ```
-
-3. **Clean Docker cache**:
-   ```bash
-   docker system prune -a
-   ```
-
-### **Getting Help**
-
-**Still having issues?**
-1. **Check logs**: `export COMPLYCHAIN_LOG_LEVEL=DEBUG`
-2. **Run tests**: `python -m pytest complychain/tests/ -v`
-3. **Create issue**: [GitHub Issues](https://github.com/RanaEhtashamAli/comply-chain/issues)
-4. **Join discussion**: [GitHub Discussions](https://github.com/RanaEhtashamAli/comply-chain/discussions)
-
-## 📞 **Support**
-
-- **Documentation**: [GitHub Wiki](https://github.com/RanaEhtashamAli/comply-chain/wiki)
-- **Issues**: [GitHub Issues](https://github.com/RanaEhtashamAli/comply-chain/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/RanaEhtashamAli/comply-chain/discussions)
-- **Email**: ranaehtashamali1@gmail.com
-- **Phone**: +923224712517
+[![FIPS](https://img.shields.io/badge/FIPS-204%20ML--DSA-blue.svg)](https://csrc.nist.gov/pubs/fips/204/final)
+[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)]()
 
 ---
 
-**ComplyChain** - Enterprise-grade GLBA compliance with quantum-safe security. Built for the future of financial regulation. 
+## What it does
+
+| Capability | Module |
+|------------|--------|
+| Multi-regulation assessment (GLBA, PCI-DSS, DORA, SOC 2) | `complychain.regulations` |
+| Quantum-safe digital signatures (ML-DSA-65 / FIPS 204) | `complychain.crypto_engine` |
+| Real-time ML anomaly detection (Isolation Forest, LOF, Z-score ensemble) | `complychain.detection` |
+| Velocity / structuring detection | `complychain.detection.velocity` |
+| Model drift detection (Page-Hinkley) | `complychain.detection.drift` |
+| Merkle-chained audit log with integrity verification | `complychain.audit_system`, `complychain.verification` |
+| Assessment persistence and trend tracking (SQLite) | `complychain.persistence` |
+| In-process event bus + HTTP webhooks + Slack notifications | `complychain.events` |
+| FinCEN / OFAC sanctions screening | `complychain.threat_scanner` |
+| CLI for scanning, signing, reporting, and regulation assessment | `complychain.cli` |
+
+---
+
+## Installation
+
+```bash
+pip install complychain
+```
+
+Python 3.9+ required. All core dependencies install automatically.
+
+### Quantum-safe cryptography (optional)
+
+By default, the library falls back to RSA-4096. To enable ML-DSA-65 (NIST FIPS 204):
+
+```bash
+# Ubuntu / Debian
+sudo apt-get install cmake build-essential ninja-build libssl-dev
+pip install liboqs-python
+
+# macOS
+brew install cmake
+pip install liboqs-python
+```
+
+Verify:
+
+```bash
+python -c "import oqs; print('liboqs available:', oqs.get_enabled_sig_mechanisms()[:3])"
+```
+
+Without liboqs, the library prints a warning and falls back to RSA-4096 transparently — no code changes needed.
+
+---
+
+## Quickstart
+
+### Transaction scanning
+
+```python
+from complychain import GLBAScanner
+
+scanner = GLBAScanner()
+result = scanner.scan({
+    "amount": 12500,
+    "currency": "USD",
+    "transaction_type": "wire",
+    "beneficiary": "ACME Corp",
+    "originator": "Jane Doe"
+})
+
+print(result["risk_score"])       # 0.0 – 1.0
+print(result["threat_flags"])     # ["HIGH_VALUE_TRANSACTION", ...]
+print(result["fincen_compliance"]["ctr_required"])  # True if amount >= $10,000
+```
+
+### Quantum-safe signing
+
+```python
+from complychain import QuantumSafeSigner
+
+signer = QuantumSafeSigner()
+signer.generate_keys()
+
+data = b"transaction payload"
+signature = signer.sign(data)
+assert signer.verify(data, signature)
+
+print(signer.algorithm)  # "ml-dsa-65" or "rsa-4096" (fallback)
+```
+
+### Regulation assessment
+
+```python
+from complychain.regulations import default_registry, InstitutionProfile
+
+profile = InstitutionProfile(
+    name="First Community Bank",
+    jurisdiction="US",
+    entity_type="bank",
+)
+
+# Assess all applicable regulations at once
+reports = default_registry.assess_all(profile)
+for reg_id, report in reports.items():
+    print(f"{reg_id}: {report.overall_status.value}  risk={report.risk_score:.2f}")
+```
+
+Output:
+```
+glba: NON_COMPLIANT  risk=0.61
+pci_dss: NOT_APPLICABLE  risk=0.00
+soc2: COMPLIANT  risk=0.12
+```
+
+### Audit chain
+
+```python
+from complychain import GLBAAuditor
+
+auditor = GLBAAuditor()
+auditor.log_transaction({"amount": 5000, "type": "ACH"}, b"signature_bytes")
+
+# Verify chain integrity
+from complychain.verification import AuditChainVerifier
+result = AuditChainVerifier().verify()
+print(result.ok, result.total_entries, result.tampered_entries)
+```
+
+### ML anomaly detection
+
+```python
+import numpy as np
+from complychain.detection import EnsembleDetector, VelocityDetector
+
+# Ensemble (IsolationForest + LOF + Z-score majority vote)
+det = EnsembleDetector()
+X_train = np.random.normal(size=(200, 3))
+det.fit(X_train)
+
+is_anomaly, score = det.predict(np.array([100.0, 100.0, 100.0]))
+
+# Velocity / structuring detection
+vel = VelocityDetector(window_seconds=86_400, max_count_threshold=10)
+vel.observe("account-123", amount=4900.0)
+vel.observe("account-123", amount=4900.0)
+print(vel.is_suspicious("account-123"))  # True at high velocity
+```
+
+### Assessment persistence and diff
+
+```python
+from complychain.persistence import AssessmentStore
+from complychain.regulations import GLBARegulation
+
+store = AssessmentStore()
+report = GLBARegulation().assess(profile)
+store.save(report)
+
+# Later — compare two runs
+diff = store.diff("glba")
+print(diff.risk_delta, diff.status_changed)
+for ctrl in diff.control_diffs:
+    if ctrl.changed:
+        print(f"{ctrl.control_id}: {ctrl.old_status} → {ctrl.new_status}")
+```
+
+### Events and webhooks
+
+```python
+from complychain.events import default_bus, EventType, WebhookEmitter, SlackEmitter
+
+# HTTP webhook (HMAC-SHA256 signed)
+emitter = WebhookEmitter(
+    urls=["https://your-siem.example.com/events"],
+    secret="your-signing-secret",
+)
+emitter.start()
+
+# Slack notifications
+slack = SlackEmitter(webhook_url="https://hooks.slack.com/services/...")
+slack.start()
+
+# Events fire automatically when threats are detected or assessments complete
+# You can also emit manually:
+from complychain.events import Event
+default_bus.emit(Event(EventType.THREAT_DETECTED, {"risk_score": 0.91}))
+```
+
+---
+
+## CLI
+
+### Transaction scanning
+
+```bash
+complychain scan --file transaction.json
+complychain scan --file transaction.json --quantum-safe
+```
+
+### Cryptographic operations
+
+```bash
+# Generate ML-DSA-65 keys
+complychain quantum-keys generate --output-dir ./keys
+
+# Sign
+complychain sign --file data.json --quantum-safe
+
+# Verify
+complychain verify --file data.json --signature sig.bin --public-key pub.pem
+```
+
+### Compliance reporting
+
+```bash
+complychain report --type monthly --output glba_report.pdf
+complychain report --type daily --output daily_report.pdf
+```
+
+### Regulation assessment
+
+```bash
+# List all registered regulations
+complychain regulations list
+
+# Assess all applicable regulations for a profile
+complychain regulations assess --name "First Community Bank" --entity-type bank
+
+# Assessment history
+complychain regulations history --regulation glba --days 30
+
+# Diff two most recent runs
+complychain regulations diff --regulation glba
+```
+
+---
+
+## Regulation framework
+
+### Supported regulations
+
+| Regulation | ID | Applicability |
+|---|---|---|
+| GLBA §314.4 Safeguards Rule | `glba` | Banks, credit unions, mortgage companies, fintechs |
+| PCI-DSS 4.0 | `pci_dss` | Any entity that processes card payments |
+| DORA (EU 2022/2554) | `dora` | EU-nexus financial entities |
+| SOC 2 Type II (AICPA 2017) | `soc2` | SaaS, fintechs, banks, credit unions |
+
+### Control statuses
+
+Each control returns `COMPLIANT`, `PARTIAL`, `NON_COMPLIANT`, or `NOT_APPLICABLE`. Many controls perform **active verification** — they read the filesystem, check real key pairs, validate MFA secrets, and walk the audit chain hash tree rather than just reading environment flags.
+
+### Adding a custom regulation
+
+```python
+from complychain.regulations.base import BaseRegulation, ComplianceStatus, InstitutionProfile, RegulationReport
+from complychain.regulations import default_registry
+
+class MyRegulation(BaseRegulation):
+    @property
+    def regulation_id(self): return "my_reg"
+
+    @property
+    def regulation_name(self): return "My Internal Policy v1"
+
+    @property
+    def version(self): return "1.0"
+
+    def is_applicable(self, profile): return True
+
+    def assess(self, profile) -> RegulationReport:
+        controls = {}
+        # ... build ControlResult dict ...
+        return self._build_report(profile, controls)
+
+default_registry.register(MyRegulation())
+```
+
+---
+
+## Architecture
+
+### Modules
+
+```
+complychain/
+├── regulations/          # BaseRegulation, RegulationRegistry, GLBA/PCI-DSS/DORA/SOC2
+├── persistence/          # AssessmentStore (SQLite), AssessmentDiff, risk_trend()
+├── events/               # EventBus, WebhookEmitter (HMAC), SlackEmitter (Block Kit)
+├── verification/         # KeyVerifier, AuditChainVerifier, MFAVerifier
+├── detection/
+│   ├── ml_engine.py      # MLEngine (Isolation Forest, training pipeline)
+│   ├── ensemble.py       # EnsembleDetector (IF + LOF + Z-score majority vote)
+│   ├── velocity.py       # VelocityDetector (rolling-window, per-entity)
+│   └── drift.py          # DriftDetector (Page-Hinkley change detection)
+├── audit_system.py       # GLBAAuditor (Merkle-chain, PDF reports)
+├── crypto_engine.py      # QuantumSafeSigner (ML-DSA-65 / RSA-4096 fallback)
+├── threat_scanner.py     # GLBAScanner (FinCEN thresholds, OFAC, sanctions)
+├── compliance/           # GLBA engine, MFA, vendor management, training
+└── cli.py                # Typer CLI
+```
+
+### Audit chain integrity
+
+Every transaction logged by `GLBAAuditor` is linked by a SHA-256 Merkle chain:
+
+```
+hash_n = SHA-256(prev_hash_n-1 || merkle_root_n || sig_hex_n)
+```
+
+`AuditChainVerifier` walks the full chain and reports any broken link or tampered entry.
+
+### Deep active verification
+
+Unlike policy-only frameworks, several controls perform live checks:
+
+- **KeyVerifier** — confirms PEM key files exist, reads `keystore.json` age, and performs a round-trip sign/verify with the stored key pair
+- **AuditChainVerifier** — walks every entry in `audit_chain.json` and recomputes the hash chain
+- **MFAVerifier** — validates each secret is valid base32, decodes to ≥ 10 bytes, and checks `expires_at` timestamps
+
+---
+
+## Cryptography
+
+ComplyChain implements **ML-DSA-65** as specified in **NIST FIPS 204** via the `pqcrypto` library (a wrapper around the liboqs C reference implementation). This is not a NIST CMVP-certified module; it implements the algorithm as specified in the standard.
+
+| Fallback chain | When used |
+|---|---|
+| ML-DSA-65 (NIST FIPS 204) | liboqs-python installed |
+| RSA-4096 (PKCS#1 v1.5, SHA-256) | liboqs unavailable |
+
+Key storage uses AES-GCM-256 with Scrypt key derivation (N=16384, r=8, p=1 — OWASP recommended parameters).
+
+---
+
+## Environment variables
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `COMPLYCHAIN_FINCEN_API_KEY` | FinCEN API key for live sanctions lookups | None (offline mode) |
+| `COMPLYCHAIN_KEY_DIR` | Directory for PEM key files | `~/.complychain/keys` |
+| `COMPLYCHAIN_AUDIT_DIR` | Directory for `audit_chain.json` | `~/.complychain/audit` |
+| `COMPLYCHAIN_MFA_DIR` | Directory for `mfa_secrets.json` | `~/.complychain/mfa` |
+| `COMPLYCHAIN_ASSESSMENT_DIR` | SQLite assessment store location | `~/.complychain/assessments` |
+| `COMPLYCHAIN_MODEL_PATH` | Trained ML model directory | `~/.complychain/models` |
+| `COMPLYCHAIN_WEBHOOK_URLS` | Comma-separated webhook endpoint URLs | None |
+| `COMPLYCHAIN_WEBHOOK_SECRET` | HMAC-SHA256 signing key for webhooks | None (unsigned) |
+| `COMPLYCHAIN_SLACK_WEBHOOK_URL` | Slack Incoming Webhook URL | None |
+| `COMPLYCHAIN_LOG_LEVEL` | Logging level (DEBUG/INFO/WARNING/ERROR) | `INFO` |
+| `COMPLYCHAIN_MFA_ENABLED` | Whether MFA is enabled | `false` |
+| `COMPLYCHAIN_TLS_ENABLED` | Whether TLS is enforced | `false` |
+
+---
+
+## Docker
+
+```bash
+# Build
+docker build -t complychain .
+
+# Scan a transaction
+docker run -v ./audit:/audit_chain \
+  -e COMPLYCHAIN_FINCEN_API_KEY=your_key \
+  complychain scan --file /audit_chain/tx.json
+
+# With quantum-safe cryptography (requires cmake at build time)
+docker build -f Dockerfile.oqs -t complychain-quantum .
+docker run -v ./keys:/keys complychain-quantum quantum-keys generate --output-dir /keys
+```
+
+---
+
+## GLBA §314.4 coverage
+
+| Section | Requirement | Control |
+|---|---|---|
+| §314.4(b) | Risk assessment | `glba_risk_assessment` |
+| §314.4(c)(1) | Access controls | `glba_access_controls` |
+| §314.4(c)(3) | Data encryption | `glba_encryption` |
+| §314.4(c)(8) | Audit trails | `glba_audit_trail` |
+| §314.4(e) | Employee training | `glba_training` |
+| §314.4(f) | Vendor management | `glba_vendor_management` |
+| §314.4(h) | Incident response | `glba_incident_response` |
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/RanaEhtashamAli/comply-chain.git
+cd comply-chain
+uv sync --extra dev   # or: pip install -e ".[dev]"
+
+# Run tests
+uv run pytest
+
+# Run with coverage
+uv run pytest --cov=complychain --cov-report=term-missing
+```
+
+Current test suite: **614 tests, 95% coverage**.
+
+---
+
+## Compliance standards implemented
+
+- **NIST FIPS 204** — ML-DSA-65 digital signature algorithm
+- **GLBA §314.4** — Safeguards Rule (FTC, 2023 revision)
+- **PCI-DSS 4.0** — Payment Card Industry Data Security Standard
+- **DORA** — EU Digital Operational Resilience Act (Regulation 2022/2554)
+- **SOC 2 Type II** — AICPA Trust Service Criteria (2017)
+- **FinCEN BSA** — Bank Secrecy Act thresholds (CTR $10K, SAR $5K, wire $3K)
+- **NIST SP 800-131A** — Key management guidance
+- **OWASP 2024** — Password storage parameters (Scrypt)
+
+---
+
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Areas where help is most useful:
+- Additional regulation adapters (Basel III, ISO 27001, HIPAA)
+- Real FinCEN API integration testing
+- Core banking system integration adapters
+- Performance benchmarking suite
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
+
+---
+
+## Support
+
+- **Issues**: [GitHub Issues](https://github.com/RanaEhtashamAli/comply-chain/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/RanaEhtashamAli/comply-chain/discussions)
+- **Email**: ranaehtashamali1@gmail.com
