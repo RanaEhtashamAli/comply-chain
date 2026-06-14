@@ -6,16 +6,6 @@ from complychain.audit_system import GLBAAuditor
 import io
 import PyPDF2
 
-@pytest.fixture(autouse=True, scope='function')
-def patch_scanner_for_speed(monkeypatch):
-    # Always use fallback data for sanctions in tests
-    def always_fallback(self):
-        return self._get_ofac_fallback_data()
-    monkeypatch.setattr(GLBAScanner, 'load_sanction_list', always_fallback)
-    monkeypatch.setattr(GLBAScanner, '_load_ofac_sdn_list', lambda self: set())
-    monkeypatch.setattr(GLBAScanner, '_load_fincen_bsa_data', lambda self: set())
-    monkeypatch.setattr(GLBAScanner, '_load_unsc_sanctions', lambda self: set())
-    monkeypatch.setattr(GLBAScanner, '_load_uk_sanctions', lambda self: set())
 
 def extract_text_from_pdf(pdf_bytes):
     reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
