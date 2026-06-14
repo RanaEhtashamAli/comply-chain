@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "complychain"
-version = "1.0.0"
-description = "Enterprise-grade GLBA compliance toolkit with quantum-safe cryptography"
+version = "2.0.0"
+description = "Enterprise compliance toolkit: GLBA, PCI-DSS, DORA, SOC 2 — quantum-safe crypto, ML anomaly detection, audit chain, webhooks"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -14,7 +14,11 @@ authors = [
 maintainers = [
     {name = "Rana Ehtasham Ali", email = "ranaehtashamali1@gmail.com"}
 ]
-keywords = ["glba", "compliance", "cryptography", "quantum-safe", "audit", "fintech", "regtech"]
+keywords = [
+    "glba", "pci-dss", "dora", "soc2", "compliance", "regtech", "fintech",
+    "cryptography", "quantum-safe", "audit", "anomaly-detection", "webhook",
+    "risk-management", "regulatory", "post-quantum"
+]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Financial and Insurance Industry",
@@ -22,6 +26,7 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "Topic :: Security :: Cryptography",
     "Topic :: Office/Business :: Financial",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
@@ -68,6 +73,7 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.10.0",
+    "pyotp>=2.9.0",
     "black>=23.0.0",
     "ruff>=0.1.0",
     "mypy>=1.0.0",
@@ -77,6 +83,7 @@ test = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-mock>=3.10.0",
+    "pyotp>=2.9.0",
 ]
 docs = [
     "sphinx>=6.0.0",
@@ -223,8 +230,3 @@ exclude_lines = [
     "@(abc\\.)?abstractmethod",
 ] 
 
-[dependency-groups]
-dev = [
-    "pyotp>=2.9.0",
-    "pytest>=8.4.2",
-]
