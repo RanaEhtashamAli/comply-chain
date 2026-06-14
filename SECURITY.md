@@ -49,7 +49,7 @@ Send a detailed report to: **ranaehtashamali1@gmail.com**
 ## Cryptographic Security
 
 ### Algorithm Selection
-- **Primary**: NIST-approved post-quantum algorithms (Dilithium3)
+- **Primary**: NIST FIPS 204 (ML-DSA-65) — post-quantum digital signatures via liboqs
 - **Fallback**: RSA-4096 for compatibility
 - **Key sizes**: Follow NIST recommendations
 

@@ -9,7 +9,9 @@ import json
 import logging
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Any
+if TYPE_CHECKING:
+    from .velocity import VelocityDetector
 import numpy as np
 import joblib
 from sklearn.ensemble import IsolationForest
@@ -37,6 +39,11 @@ class MLEngine:
         self.model_path.mkdir(parents=True, exist_ok=True)
 
         self._lock = threading.RLock()
+
+        # Optional enterprise extensions (attached via enable_* methods)
+        self._ensemble = None
+        self._drift = None
+        self._velocity = None
 
         self.model: Optional[IsolationForest] = None
         self.scaler: Optional[StandardScaler] = None
@@ -301,4 +308,43 @@ class MLEngine:
             'feature_count': len(self.feature_names),
             'feature_names': self.feature_names,
             'metrics': self.metrics,
-        } 
+        }
+
+    # ------------------------------------------------------------------
+    # Opt-in enterprise extensions
+    # ------------------------------------------------------------------
+
+    def enable_ensemble(self, contamination: float = 0.1) -> "MLEngine":
+        """Attach an EnsembleDetector; it trains whenever train() is called."""
+        from .ensemble import EnsembleDetector
+        with self._lock:
+            self._ensemble = EnsembleDetector(contamination=contamination)
+        return self
+
+    def enable_drift_detection(
+        self,
+        threshold: float = 50.0,
+        on_drift: Optional[Callable] = None,
+    ) -> "MLEngine":
+        """Attach a DriftDetector; each predict() call feeds it a score."""
+        from .drift import DriftDetector
+        with self._lock:
+            self._drift = DriftDetector(threshold=threshold, on_drift=on_drift)
+        return self
+
+    def enable_velocity(
+        self,
+        window_seconds: int = 86_400,
+        max_count_threshold: int = 10,
+        max_total_threshold: float = 50_000.0,
+    ) -> "VelocityDetector":
+        """Attach a VelocityDetector and return it for direct use."""
+        from .velocity import VelocityDetector
+        vd = VelocityDetector(
+            window_seconds=window_seconds,
+            max_count_threshold=max_count_threshold,
+            max_total_threshold=max_total_threshold,
+        )
+        with self._lock:
+            self._velocity = vd
+        return vd

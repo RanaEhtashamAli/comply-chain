@@ -31,13 +31,16 @@ from .exceptions import KeyValidationError
 # Try quantum-safe backend (liboqs — FIPS 204 / ML-DSA)
 try:
     import oqs  # type: ignore
+    # Trigger early library load so we catch RuntimeError (liboqs C lib missing) at import time
+    if not hasattr(oqs, 'Signature'):
+        raise ImportError("oqs.Signature not available")
     OQS_AVAILABLE = True
     logging.getLogger(__name__).info("liboqs available — FIPS 204 / ML-DSA (Dilithium3) enabled")
-except ImportError:
+except (ImportError, RuntimeError, Exception):
     OQS_AVAILABLE = False
     logging.getLogger(__name__).warning(
         "liboqs not available — falling back to RSA-4096. "
-        "Install liboqs-python for FIPS 204 / ML-DSA support."
+        "Install liboqs-python + liboqs C library for FIPS 204 / ML-DSA support."
     )
 
 logger = logging.getLogger(__name__)
@@ -85,20 +88,29 @@ class QuantumSafeSigner:
         Default location: ~/.complychain/keys/
     """
 
-    def __init__(self, algorithm: str = "Dilithium3"):
+    # Accept both the legacy CRYSTALS name and the NIST FIPS 204 name.
+    _DILITHIUM_ALIASES = frozenset({
+        "DILITHIUM3", "DILITHIUM", "ML-DSA-65", "MLDSA65", "MLDSA", "ML_DSA_65",
+    })
+
+    def __init__(self, algorithm: str = "ML-DSA-65"):
         self._private_key: Optional[bytes] = None
         self._public_key: Optional[bytes] = None
 
-        if algorithm.upper() in ("DILITHIUM3", "DILITHIUM") and OQS_AVAILABLE:
+        _algo_norm = algorithm.upper().replace("-", "").replace("_", "")
+        _is_dilithium = _algo_norm in {"DILITHIUM3", "DILITHIUM", "MLDSA65", "MLDSA"}
+        if _is_dilithium and OQS_AVAILABLE:
             self._backend = "liboqs"
-            self.algorithm = "Dilithium3"
+            self._oqs_algorithm = "ML-DSA-65"   # NIST FIPS 204 / ML-DSA name
+            self.algorithm = "ML-DSA-65"
         else:
-            if algorithm.upper() not in ("RSA-4096", "RSA"):
+            if not _is_dilithium and _algo_norm not in {"RSA4096", "RSA"}:
                 logger.warning(
                     f"{algorithm} requested but liboqs is not available — "
                     "falling back to RSA-4096"
                 )
             self._backend = "rsa"
+            self._oqs_algorithm: Optional[str] = None
             self.algorithm = "RSA-4096"
 
     # ------------------------------------------------------------------
@@ -114,12 +126,12 @@ class QuantumSafeSigner:
         """
         try:
             if self._backend == "liboqs":
-                with oqs.Signature("Dilithium3") as signer:
+                with oqs.Signature(self._oqs_algorithm) as signer:
                     public_key = signer.generate_keypair()
                     private_key = signer.export_secret_key()
                 self._private_key = private_key
                 self._public_key = public_key
-                logger.info("Generated Dilithium3 (FIPS 204) key pair via liboqs")
+                logger.info(f"Generated {self._oqs_algorithm} (FIPS 204) key pair via liboqs")
             else:
                 priv = rsa.generate_private_key(public_exponent=65537, key_size=4096)
                 pub = priv.public_key()
@@ -150,8 +162,7 @@ class QuantumSafeSigner:
             raise RuntimeError("No private key available — call generate_keys() or load_keys() first")
         try:
             if self._backend == "liboqs":
-                with oqs.Signature("Dilithium3") as signer:
-                    signer.import_secret_key(self._private_key)
+                with oqs.Signature(self._oqs_algorithm, secret_key=self._private_key) as signer:
                     return signer.sign(message)
             else:
                 priv = serialization.load_pem_private_key(self._private_key, password=None)
@@ -170,9 +181,9 @@ class QuantumSafeSigner:
             raise RuntimeError("No public key available for verification")
         try:
             if self._backend == "liboqs":
-                with oqs.Signature("Dilithium3") as verifier:
-                    verifier.import_public_key(pub)
-                    return verifier.verify(message, signature)
+                pub_bytes = self._decode_liboqs_pem(pub)
+                with oqs.Signature(self._oqs_algorithm) as verifier:
+                    return verifier.verify(message, signature, pub_bytes)
             else:
                 loaded_pub = serialization.load_pem_public_key(pub)
                 try:
@@ -268,9 +279,15 @@ class QuantumSafeSigner:
             self._zeroize(bytearray(derived))
 
         self._public_key = bytes.fromhex(payload['public_key'])
-        # Restore backend / algorithm from stored metadata
+        # Restore backend / algorithm from stored metadata.
+        # Translate legacy "Dilithium3" keystore entries to the NIST FIPS 204 name.
         self._backend = payload.get('backend', self._backend)
-        self.algorithm = payload.get('algorithm', self.algorithm)
+        stored_algo = payload.get('algorithm', self.algorithm)
+        if stored_algo in ("Dilithium3", "dilithium3"):
+            stored_algo = "ML-DSA-65"
+        self.algorithm = stored_algo
+        if self._backend == "liboqs":
+            self._oqs_algorithm = self.algorithm
         logger.info(f"Keys loaded from {key_file} (algorithm: {self.algorithm})")
 
     # ------------------------------------------------------------------
@@ -316,6 +333,18 @@ class QuantumSafeSigner:
             raise KeyStoreError("No public key available")
         return self._public_key
 
+    def _decode_liboqs_pem(self, key_data: bytes) -> bytes:
+        """Return raw key bytes from either raw bytes or a PEM-wrapped liboqs key."""
+        import base64
+        if isinstance(key_data, bytes) and key_data.startswith(b"-----BEGIN"):
+            pem_str = key_data.decode("ascii", errors="replace")
+            b64 = "".join(
+                ln for ln in pem_str.strip().splitlines()
+                if not ln.startswith("-----")
+            )
+            return base64.b64decode(b64)
+        return key_data
+
     # ------------------------------------------------------------------
     # Internal utilities
     # ------------------------------------------------------------------
@@ -340,6 +369,6 @@ class QuantumSafeSigner:
         """Return list of available signature algorithms on this system."""
         algorithms = []
         if OQS_AVAILABLE:
-            algorithms.extend(['dilithium3', 'falcon512', 'sphincs+-sha256-128f-simple'])
+            algorithms.extend(['ml-dsa-65', 'falcon-512', 'falcon-1024'])
         algorithms.append('rsa-4096')
         return algorithms

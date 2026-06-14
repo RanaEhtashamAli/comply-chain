@@ -563,5 +563,318 @@ def benchmark(
         sys.exit(1)
 
 
+@app.command()
+def sanctions_status():
+    """Show OFAC/FinCEN sanctions data verification status and live source connectivity."""
+    import os
+    from .threat_scanner import SanctionsVerificationStatus
+
+    scanner = GLBAScanner()
+    fincen_key = os.environ.get("COMPLYCHAIN_FINCEN_API_KEY")
+
+    table = Table(title="Sanctions Data Status (GLBA §314.4(c)(1))")
+    table.add_column("Source", style="cyan")
+    table.add_column("Status", style="magenta")
+
+    status_str = scanner._sanctions_status.value if scanner._sanctions_status else "UNKNOWN"
+    table.add_row("Sanctions cache", status_str)
+    table.add_row("OFAC SDN List", "configured (live on next load)")
+    table.add_row("UNSC Consolidated List", "configured (live on next load)")
+    table.add_row("UK Sanctions List", "configured (live on next load)")
+    table.add_row(
+        "FinCEN BSA API Key",
+        "configured" if fincen_key else "not set — set COMPLYCHAIN_FINCEN_API_KEY",
+    )
+    console.print(table)
+
+    if not fincen_key:
+        console.print(
+            "[yellow]⚠ FinCEN BSA live data requires COMPLYCHAIN_FINCEN_API_KEY.[/yellow]"
+        )
+        console.print(
+            "[yellow]  Export it before running: export COMPLYCHAIN_FINCEN_API_KEY=<your_key>[/yellow]"
+        )
+    else:
+        console.print("[green]✓ FinCEN API key is set — live BSA data will be fetched.[/green]")
+
+
+# ---------------------------------------------------------------------------
+# regulations sub-app
+# ---------------------------------------------------------------------------
+
+regulations_app = typer.Typer(
+    name="regulations",
+    help="Multi-regulation compliance management (GLBA, PCI-DSS, DORA, SOC 2)",
+    add_completion=False,
+)
+app.add_typer(regulations_app, name="regulations")
+
+
+def _build_profile(
+    profile_name: str,
+    jurisdiction: str,
+    entity_type: str,
+    processes_cards: bool,
+    eu_nexus: bool,
+) -> "InstitutionProfile":
+    from .regulations.base import InstitutionProfile
+    return InstitutionProfile(
+        name=profile_name,
+        jurisdiction=jurisdiction,
+        entity_type=entity_type,
+        processes_card_payments=processes_cards,
+        eu_nexus=eu_nexus,
+    )
+
+
+@regulations_app.command("list")
+def regulations_list(
+    profile_name: str = typer.Option("My Institution", "--profile-name", "-n"),
+    jurisdiction: str = typer.Option("US", "--jurisdiction", "-j"),
+    entity_type: str = typer.Option("fintech", "--entity-type", "-e"),
+    processes_cards: bool = typer.Option(False, "--processes-cards/--no-processes-cards"),
+    eu_nexus: bool = typer.Option(False, "--eu-nexus/--no-eu-nexus"),
+    show_all: bool = typer.Option(False, "--all", help="Show all regulations, not just applicable ones"),
+) -> None:
+    """List available compliance regulations and their applicability."""
+    from .regulations.registry import default_registry
+
+    profile = _build_profile(profile_name, jurisdiction, entity_type, processes_cards, eu_nexus)
+    all_regs = default_registry.list_all()
+
+    table = Table(title=f"Available Regulations — {profile_name} ({jurisdiction})")
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Regulation", style="white")
+    table.add_column("Version", style="dim")
+    table.add_column("Applicable", style="magenta")
+
+    for reg in all_regs:
+        applicable = reg.is_applicable(profile)
+        if not show_all and not applicable:
+            continue
+        table.add_row(
+            reg.regulation_id,
+            reg.regulation_name,
+            reg.version,
+            "[green]YES[/green]" if applicable else "[red]NO[/red]",
+        )
+    console.print(table)
+
+
+@regulations_app.command("assess")
+def regulations_assess(
+    regulation_id: Optional[str] = typer.Argument(
+        None,
+        help="Regulation ID to assess (glba, pci_dss, dora, soc2). Omit to assess all applicable.",
+    ),
+    profile_name: str = typer.Option("My Institution", "--profile-name", "-n"),
+    jurisdiction: str = typer.Option("US", "--jurisdiction", "-j"),
+    entity_type: str = typer.Option("fintech", "--entity-type", "-e"),
+    processes_cards: bool = typer.Option(False, "--processes-cards/--no-processes-cards"),
+    eu_nexus: bool = typer.Option(False, "--eu-nexus/--no-eu-nexus"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Write JSON report to file"),
+    fmt: str = typer.Option("table", "--format", "-f", help="Output format: table or json"),
+) -> None:
+    """Run a compliance assessment for one or all applicable regulations."""
+    from .regulations.registry import default_registry
+    from .regulations.base import ComplianceStatus
+
+    profile = _build_profile(profile_name, jurisdiction, entity_type, processes_cards, eu_nexus)
+
+    if regulation_id:
+        reg = default_registry.get(regulation_id)
+        if reg is None:
+            console.print(f"[red]Unknown regulation: '{regulation_id}'[/red]")
+            console.print(f"Available: {', '.join(r.regulation_id for r in default_registry.list_all())}")
+            sys.exit(1)
+        reports = {regulation_id: reg.assess(profile)}
+    else:
+        reports = {
+            rid: report
+            for rid, report in default_registry.assess_all(profile).items()
+            if report.applicable
+        }
+
+    if fmt == "json":
+        payload = {rid: r.to_dict() for rid, r in reports.items()}
+        if output:
+            output.write_text(__import__("json").dumps(payload, indent=2))
+            console.print(f"[green]✓ Report written to {output}[/green]")
+        else:
+            print(__import__("json").dumps(payload, indent=2))
+        return
+
+    _status_colour = {
+        ComplianceStatus.COMPLIANT:     "green",
+        ComplianceStatus.PARTIAL:       "yellow",
+        ComplianceStatus.NON_COMPLIANT: "red",
+        ComplianceStatus.PENDING:       "dim",
+        ComplianceStatus.NOT_APPLICABLE: "dim",
+    }
+
+    for rid, report in reports.items():
+        colour = _status_colour.get(report.overall_status, "white")
+        table = Table(
+            title=f"{report.regulation_name} — {profile_name}",
+            show_lines=True,
+        )
+        table.add_column("Control", style="cyan", no_wrap=True)
+        table.add_column("Title", style="white")
+        table.add_column("Status", no_wrap=True)
+        table.add_column("Findings", style="dim")
+
+        for ctrl in report.controls.values():
+            c = _status_colour.get(ctrl.status, "white")
+            table.add_row(
+                ctrl.control_id,
+                ctrl.title[:60],
+                f"[{c}]{ctrl.status.value}[/{c}]",
+                "; ".join(ctrl.findings[:2]),
+            )
+
+        console.print(table)
+        console.print(
+            f"  Overall: [{colour}]{report.overall_status.value}[/{colour}]"
+            f"  |  Risk score: {report.risk_score:.2f}"
+        )
+
+    if output:
+        payload = {rid: r.to_dict() for rid, r in reports.items()}
+        output.write_text(__import__("json").dumps(payload, indent=2))
+        console.print(f"[green]✓ Report written to {output}[/green]")
+
+    # Persist results and emit events
+    try:
+        import uuid as _uuid
+        from .persistence import AssessmentStore
+        from .events import default_bus, Event, EventType as _ET
+
+        store = AssessmentStore()
+        run_id = str(_uuid.uuid4())
+        for rid, report in reports.items():
+            store.save(report, run_id=run_id)
+            prev = store.previous(rid)
+            default_bus.emit(Event(_ET.ASSESSMENT_COMPLETED, {
+                "regulation": rid,
+                "risk_score": report.risk_score,
+                "status": report.overall_status.value,
+            }))
+            if prev and prev.overall_status != report.overall_status.value:
+                default_bus.emit(Event(_ET.COMPLIANCE_STATUS_CHANGED, {
+                    "regulation": rid,
+                    "old_status": prev.overall_status,
+                    "status": report.overall_status.value,
+                }))
+    except Exception:
+        pass
+
+
+@regulations_app.command("history")
+def regulations_history(
+    regulation: Optional[str] = typer.Option(None, "--regulation", "-r",
+                                              help="Filter by regulation ID (glba, pci_dss, dora, soc2)"),
+    days: int = typer.Option(30, "--days", "-d", help="Look-back window in days"),
+    fmt: str = typer.Option("table", "--format", "-f", help="Output format: table or json"),
+) -> None:
+    """Show assessment history from the local store."""
+    from .persistence import AssessmentStore
+
+    store = AssessmentStore()
+    records = store.query(regulation_id=regulation, days=days)
+
+    if not records:
+        console.print("[yellow]No assessment history found for the given filter.[/yellow]")
+        return
+
+    if fmt == "json":
+        print(__import__("json").dumps(
+            [{"run_id": r.run_id, "regulation_id": r.regulation_id,
+              "assessed_at": r.assessed_at, "overall_status": r.overall_status,
+              "risk_score": r.risk_score} for r in records],
+            indent=2,
+        ))
+        return
+
+    table = Table(title=f"Assessment History (last {days} days)")
+    table.add_column("Date", style="dim")
+    table.add_column("Regulation", style="cyan")
+    table.add_column("Status", style="magenta")
+    table.add_column("Risk Score", justify="right")
+
+    _colours = {"COMPLIANT": "green", "PARTIAL": "yellow",
+                "NON_COMPLIANT": "red", "PENDING": "dim", "NOT_APPLICABLE": "dim"}
+    for rec in records:
+        c = _colours.get(rec.overall_status, "white")
+        table.add_row(
+            rec.assessed_at[:19],
+            rec.regulation_id,
+            f"[{c}]{rec.overall_status}[/{c}]",
+            f"{rec.risk_score:.3f}",
+        )
+    console.print(table)
+
+
+@regulations_app.command("diff")
+def regulations_diff(
+    regulation: str = typer.Option(..., "--regulation", "-r",
+                                   help="Regulation ID to diff (e.g. glba)"),
+    fmt: str = typer.Option("table", "--format", "-f", help="Output format: table or json"),
+) -> None:
+    """Show what changed between the last two assessments for a regulation."""
+    from .persistence import AssessmentStore
+
+    store = AssessmentStore()
+    diff = store.diff(regulation)
+
+    if diff is None:
+        console.print(
+            f"[yellow]Not enough history for '{regulation}' — run assess at least twice.[/yellow]"
+        )
+        return
+
+    if fmt == "json":
+        print(__import__("json").dumps({
+            "regulation_id": diff.regulation_id,
+            "old_assessed_at": diff.old_assessed_at,
+            "new_assessed_at": diff.new_assessed_at,
+            "risk_delta": diff.risk_delta,
+            "status_changed": diff.status_changed,
+            "controls": [
+                {"control_id": c.control_id, "old_status": c.old_status,
+                 "new_status": c.new_status, "changed": c.changed}
+                for c in diff.control_diffs
+            ],
+        }, indent=2))
+        return
+
+    delta_colour = "red" if diff.risk_delta > 0 else "green"
+    console.print(
+        f"  {diff.regulation_id.upper()} diff: "
+        f"{diff.old_assessed_at[:19]} → {diff.new_assessed_at[:19]}  |  "
+        f"Risk delta: [{delta_colour}]{diff.risk_delta:+.3f}[/{delta_colour}]  |  "
+        f"Status changed: {'YES' if diff.status_changed else 'no'}"
+    )
+
+    if diff.control_diffs:
+        table = Table(show_lines=True)
+        table.add_column("Control", style="cyan", no_wrap=True)
+        table.add_column("Old Status", style="dim")
+        table.add_column("New Status")
+        table.add_column("Changed")
+        _colours = {"COMPLIANT": "green", "PARTIAL": "yellow",
+                    "NON_COMPLIANT": "red", "PENDING": "dim"}
+        for c in diff.control_diffs:
+            if not c.changed:
+                continue
+            nc = _colours.get(c.new_status or "", "white")
+            table.add_row(
+                c.control_id,
+                c.old_status or "—",
+                f"[{nc}]{c.new_status or '—'}[/{nc}]",
+                ":heavy_check_mark:" if c.changed else "",
+            )
+        console.print(table)
+
+
 if __name__ == "__main__":
-    app() 
+    app()

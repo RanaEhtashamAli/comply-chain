@@ -100,7 +100,7 @@ GLBA_REQUIREMENTS = {
         'title': 'Vendor Management and Oversight',
         'description': 'Select, retain, and oversee service providers maintaining appropriate safeguards',
         'controls': ['Vendor assessment', 'Contractual security requirements', 'Ongoing monitoring'],
-        'implemented': False,
+        'implemented': True,
     },
     'incident_response': {
         'section': '§314.4(h)',
@@ -268,7 +268,8 @@ class GLBAEngine:
             return ComplianceStatus.NON_COMPLIANT, findings
 
         if control_id == 'change_management':
-            cm_log = Path(os.environ.get('COMPLYCHAIN_CHANGE_LOG_PATH', ''))
+            _cm_env = os.environ.get('COMPLYCHAIN_CHANGE_LOG_PATH')
+            cm_log = Path(_cm_env) if _cm_env else None
             if cm_log and cm_log.exists():
                 return ComplianceStatus.COMPLIANT, findings
             findings.append(
@@ -316,11 +317,24 @@ class GLBAEngine:
             return ComplianceStatus.NON_COMPLIANT, findings
 
         if control_id == 'vendor_management':
-            vendor_dir = Path(os.environ.get('COMPLYCHAIN_VENDOR_CONTRACTS_PATH', ''))
+            _vd_env = os.environ.get('COMPLYCHAIN_VENDOR_CONTRACTS_PATH')
+            vendor_dir = Path(_vd_env) if _vd_env else None
             if vendor_dir and vendor_dir.exists():
                 return ComplianceStatus.COMPLIANT, findings
+            # Also check VendorManager's configured store directory
+            _vm_dir_env = os.environ.get('COMPLYCHAIN_VENDOR_DIR')
+            if _vm_dir_env:
+                from .vendor_management import VendorManager
+                vm = VendorManager(store_dir=Path(_vm_dir_env))
+                if vm.is_compliant():
+                    return ComplianceStatus.COMPLIANT, findings
+                if vm.list_vendors():
+                    findings.append(
+                        "Complete pending vendor assessments and record contract requirements"
+                    )
+                    return ComplianceStatus.PARTIAL, findings
             findings.append(
-                "Maintain vendor security contracts and set COMPLYCHAIN_VENDOR_CONTRACTS_PATH"
+                "Register vendors with VendorManager and set COMPLYCHAIN_VENDOR_CONTRACTS_PATH"
             )
             return ComplianceStatus.NON_COMPLIANT, findings
 

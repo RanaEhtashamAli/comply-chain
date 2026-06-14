@@ -2,7 +2,7 @@
 
 **Enterprise-Grade GLBA §314.4 Compliance Toolkit with Quantum-Safe Cryptography**
 
-> 🚀 **ComplyChain** is an open-source GLBA §314.4 compliance toolkit featuring post-quantum cryptography (Dilithium3), real-time ML threat detection, blockchain-style audit trails, and automated reporting — at 90% lower cost than legacy solutions.
+> 🚀 **ComplyChain** is an open-source GLBA §314.4 compliance toolkit featuring post-quantum cryptography (ML-DSA-65 / NIST FIPS 204), real-time ML threat detection, blockchain-style audit trails, and automated reporting — at 90% lower cost than legacy solutions.
 
 - 📦 PyPI: [`pip install complychain`](https://pypi.org/project/complychain/)
 - 📄 [White Paper (PDF)](./docs/ComplyChain%20White%20Paper.pdf)
@@ -136,14 +136,14 @@ complychain sign --file data.json --quantum-safe
 complychain verify --file data.json --signature sig.bin --public-key pub.bin --quantum-safe
 
 # New: Quantum-safe specific commands
-# Generate Dilithium3 keys:
-complychain quantum-keys generate --algorithm Dilithium3 --output-dir ./keys
+# Generate ML-DSA-65 keys (NIST FIPS 204):
+complychain quantum-keys generate --output-dir ./keys
 
 # Sign with quantum-safe cryptography:
-complychain quantum-sign --file data.json --algorithm Dilithium3
+complychain quantum-sign --file data.json
 
 # Verify quantum-safe signature:
-complychain quantum-verify --file data.json --signature sig.bin --public-key pub.pem --algorithm Dilithium3
+complychain quantum-verify --file data.json --signature sig.bin --public-key pub.pem
 ```
 
 ### Compliance Reporting
@@ -175,7 +175,7 @@ complychain report --type incident --output incident_report.pdf
     "sanctions_match": false
   },
   "crypto_mode": "quantum-safe",
-  "crypto_algorithm": "Dilithium3",
+  "crypto_algorithm": "ML-DSA-65",
   "currency": "USD",
   "compliance_requirements": [
     "GLBA_314_4_c_1_HIGH_VALUE_MONITORING",
@@ -216,21 +216,20 @@ services:
 
 ## 🔐 **Quantum-Safe Cryptography**
 
-ComplyChain now includes **NIST PQC Round 3** quantum-resistant cryptography with **Dilithium3** as the primary algorithm and **RSA-4096** as a fallback.
+ComplyChain implements **NIST FIPS 204** (ML-DSA) quantum-resistant cryptography with **ML-DSA-65** as the primary algorithm and **RSA-4096** as a fallback.
 
-### **🔄 Fallback Strategy & How to Fix It**
+### **🔄 Fallback Strategy**
 
 ComplyChain uses a **smart fallback system** to ensure your application always works, even when quantum-safe libraries aren't available:
 
 #### **Automatic Fallback Behavior**
 ```
-Quantum-Safe (Dilithium3) → RSA-4096 → Error Handling
+Quantum-Safe (ML-DSA-65 / FIPS 204) → RSA-4096 → Error Handling
 ```
 
 **What happens when you see this message:**
 ```
-liboqs-python not available - trying pqcrypto alternatives
-Dilithium3 requested but liboqs not available - falling back to RSA-4096 (pqcrypto has known signing issues)
+liboqs not available — falling back to RSA-4096. Install liboqs-python + liboqs C library for FIPS 204 / ML-DSA support.
 ```
 
 **This means:**
@@ -242,20 +241,19 @@ Dilithium3 requested but liboqs not available - falling back to RSA-4096 (pqcryp
 
 **Option 1: Install liboqs-python (Recommended)**
 ```bash
-# On Ubuntu/Debian
-sudo apt-get install liboqs-dev
+# On Ubuntu/Debian — install build dependencies first, then pip handles the rest
+sudo apt-get install cmake build-essential ninja-build libssl-dev
 pip install liboqs-python
 
 # On macOS
-brew install liboqs
+brew install cmake
 pip install liboqs-python
 
-# On Windows (using vcpkg)
-vcpkg install liboqs
+# On Windows — install cmake from https://cmake.org/download/ then:
 pip install liboqs-python
 
 # Verify installation
-python -c "import oqs; print('✓ liboqs available')"
+python -c "import oqs; print('✓ liboqs available:', oqs.get_enabled_sig_mechanisms()[:3])"
 ```
 
 **Option 2: Use Docker with Quantum Support**
@@ -306,23 +304,23 @@ print('Available algorithms:', signer.get_available_algorithms())
 **Expected output with quantum-safe:**
 ```
 ✓ Quantum-safe cryptography enabled
-Available algorithms: ['dilithium3', 'falcon512', 'sphincs+-sha256-128f-simple']
+Available algorithms: ['ml-dsa-65', 'falcon-512', 'falcon-1024', 'rsa-4096']
 ```
 
-**Expected output with fallback:**
+**Expected output with fallback (no liboqs):**
 ```
-liboqs-python not available - falling back to RSA-4096
+liboqs not available — falling back to RSA-4096
 Available algorithms: ['rsa-4096']
 ```
 
 ### **Quantum-Safe Features**
 
-#### **Dilithium3 Implementation**
-- **NIST Standard**: CRYSTALS-Dilithium Level 3 (FIPS 204)
-- **Security Level**: 128-bit quantum security
-- **Key Sizes**: 1952 bytes (public), 4000 bytes (private)
-- **Signature Size**: 3366 bytes
-- **Performance**: Optimized for production use
+#### **ML-DSA-65 Implementation (NIST FIPS 204)**
+- **NIST Standard**: FIPS 204 — Module-Lattice-Based Digital Signature (ML-DSA)
+- **Security Level**: NIST Level 3 (roughly 128-bit quantum security)
+- **Key Sizes**: ~1952 bytes (public), ~4000 bytes (private)
+- **Signature Size**: ~3366 bytes
+- **Performance**: Optimized for production use via liboqs C library
 
 #### **Fallback Mechanism**
 - **Automatic fallback** to RSA-4096 if liboqs is unavailable
@@ -339,14 +337,12 @@ Available algorithms: ['rsa-4096']
 ### **Installation Options**
 
 ```bash
-# Standard installation (RSA-4096 fallback)
+# Standard installation (RSA-4096 fallback — no extra dependencies)
 pip install complychain
 
-# With quantum-safe support (Dilithium3 + liboqs)
-pip install complychain[quantum]
-
-# With legacy pqcrypto support
-pip install complychain[legacy]
+# With quantum-safe support (ML-DSA-65 via liboqs + FIPS 204)
+# First install build dependencies (see above), then:
+pip install complychain liboqs-python
 ```
 
 ### **Docker with Quantum Support**
@@ -372,14 +368,14 @@ docker run -v /audit_chain:/audit_chain \
 - **Structuring detection** and suspicious activity reporting
 
 #### **Crypto Engine** (`crypto_engine.py`)
-- **Hybrid cryptography**: Dilithium3 (quantum-safe) + RSA-4096 (fallback)
+- **Hybrid cryptography**: ML-DSA-65 / NIST FIPS 204 (quantum-safe) → RSA-4096 (fallback)
 - **FIPS 140-3 Level 1** aligned (designed to meet Level 1 requirements)
 - **QuantumSafeSigner class**: Dedicated quantum-safe signature operations
 - **PEM format support**: Export/import keys for HSM integration
-- **liboqs integration**: Open Quantum Safe library support
-- **OWASP 2024 parameters**: SCRYPT_N=16384, SCRYPT_R=8
+- **liboqs integration**: Open Quantum Safe library (auto-builds from source via pip)
+- **OWASP 2024 parameters**: SCRYPT_N=16384, SCRYPT_R=8, AES-GCM-256 key storage
 - **Secure memory management** with zeroization
-- **NIST FIPS 204** compliance (CRYSTALS-Dilithium)
+- **NIST FIPS 204** (ML-DSA-65) — backward compatible with Dilithium3 keystores
 
 #### **Audit System** (`audit_system.py`)
 - **Blockchain-style audit trails** with Merkle trees
@@ -483,16 +479,15 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 **Solutions** (in order of preference):
 1. **Install liboqs-python** (Recommended):
    ```bash
-   # Ubuntu/Debian
-   sudo apt-get install liboqs-dev
+   # Ubuntu/Debian — liboqs-python auto-builds the C library if cmake is present
+   sudo apt-get install cmake build-essential ninja-build libssl-dev
    pip install liboqs-python
-   
+
    # macOS
-   brew install liboqs
+   brew install cmake
    pip install liboqs-python
-   
-   # Windows
-   vcpkg install liboqs
+
+   # Windows — install cmake from https://cmake.org/download/ then:
    pip install liboqs-python
    ```
 
@@ -506,50 +501,29 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
    - Your application will work fine with RSA-4096
    - No action needed - this is a safe fallback
 
-#### **Problem**: "Dilithium3 key generation fails"
+#### **Problem**: "ML-DSA-65 key generation fails" or liboqs import errors
 **Solutions**:
 1. **Verify liboqs installation**:
    ```bash
-   python -c "import oqs; print('✓ liboqs available')"
+   python -c "import oqs; print('✓ liboqs available:', oqs.get_enabled_sig_mechanisms()[:3])"
    ```
 
-2. **Check system dependencies**:
+2. **Install missing build dependencies** (liboqs-python builds the C library from source):
    ```bash
    # Ubuntu/Debian
-   sudo apt-get install build-essential cmake
-   
+   sudo apt-get install cmake build-essential ninja-build libssl-dev
+   pip install --force-reinstall liboqs-python
+
    # macOS
    brew install cmake
+   pip install --force-reinstall liboqs-python
    ```
-
-3. **Manual installation**:
-   ```bash
-   git clone https://github.com/open-quantum-safe/liboqs.git
-   cd liboqs && mkdir build && cd build
-   cmake -DCMAKE_INSTALL_PREFIX=/usr/local ..
-   make -j$(nproc) && sudo make install
-   pip install liboqs-python
-   ```
-
-#### **Problem**: "pqcrypto algorithms (Falcon, SPHINCS+) fail with signing errors"
-**Cause**: Known bug in pqcrypto library where key generation works but signing fails.
-
-**Solutions**:
-1. **Use liboqs instead** (Recommended):
-   ```bash
-   pip uninstall pqcrypto
-   pip install liboqs-python
-   ```
-
-2. **Let ComplyChain handle it** (Automatic):
-   - ComplyChain automatically skips pqcrypto and uses RSA-4096
-   - No action needed - this is the intended fallback behavior
 
 #### **Problem**: "No private key available - call generate_keys() first"
 **Solution**: Generate keys before signing:
 ```bash
 # Using CLI
-complychain quantum-keys generate --algorithm dilithium3
+complychain quantum-keys generate --output-dir ./keys
 
 # Using Python
 from complychain.crypto_engine import QuantumSafeSigner

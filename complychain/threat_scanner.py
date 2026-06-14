@@ -193,7 +193,7 @@ class GLBAScanner:
             sanctions_status = self._sanctions_status
             sanctions_verified = sanctions_status == SanctionsVerificationStatus.VERIFIED
 
-        return {
+        result = {
             'risk_score': min(risk_score, 100),
             'threat_flags': threat_flags,
             'fincen_compliance': fincen_compliance,
@@ -202,6 +202,26 @@ class GLBAScanner:
             'sanctions_data_verified': sanctions_verified,
             'sanctions_status': sanctions_status.value,
         }
+
+        # Emit events — deferred import to avoid circular dependency
+        try:
+            from .events import default_bus, Event, EventType
+            final_risk = result['risk_score']
+            if threat_flags:
+                default_bus.emit(Event(
+                    EventType.THREAT_DETECTED,
+                    {"risk_score": final_risk, "threat_flags": threat_flags,
+                     "sender": tx_data.get("sender", ""), "beneficiary": tx_data.get("beneficiary", "")},
+                ))
+            if fincen_compliance.get("sanctions_match"):
+                default_bus.emit(Event(
+                    EventType.SANCTION_HIT,
+                    {"entity": tx_data.get("beneficiary", ""), "risk_score": final_risk},
+                ))
+        except Exception:
+            pass
+
+        return result
 
     def _run_ml_detection(self, tx_data: dict) -> bool:
         """Return True if ML model flags the transaction as anomalous."""
@@ -227,7 +247,7 @@ class GLBAScanner:
                 tx_data.get('day_of_week', 1) / 7,
             ]]
             score = 1 - model.decision_function(features)[0]
-            return score > ML_ANOMALY_THRESHOLD
+            return bool(score > ML_ANOMALY_THRESHOLD)
 
         return False
 
@@ -477,6 +497,8 @@ class GLBAScanner:
 
     def validate_training_source(self, samples: list) -> bool:
         """Validate training data integrity (§314.4(b) — risk assessment)."""
+        if not samples:
+            return True
         required_keys = {'amount', 'beneficiary', 'sender'}
         if not all(required_keys.issubset(tx) for tx in samples):
             return False
