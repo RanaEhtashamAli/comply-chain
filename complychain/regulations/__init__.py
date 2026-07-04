@@ -12,6 +12,7 @@ from .glba import GLBARegulation
 from .pci_dss import PCIDSSRegulation
 from .dora import DORARegulation
 from .soc2 import SOC2Regulation
+from .hipaa import HIPAARegulation
 
 __all__ = [
     "BaseRegulation",
@@ -25,4 +26,5 @@ __all__ = [
     "PCIDSSRegulation",
     "DORARegulation",
     "SOC2Regulation",
+    "HIPAARegulation",
 ]

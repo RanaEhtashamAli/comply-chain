@@ -34,6 +34,7 @@ class InstitutionProfile:
     processes_card_payments: bool = False
     eu_nexus: bool = False
     employee_count: int = 0
+    hipaa_covered_entity: bool = False
 
 
 @dataclass

@@ -13,6 +13,12 @@ class EventType(str, Enum):
     COMPLIANCE_STATUS_CHANGED = "compliance_status_changed"
     ASSESSMENT_COMPLETED      = "assessment_completed"
     DRIFT_DETECTED            = "drift_detected"
+    SAR_GENERATED             = "sar_generated"
+    AML_PATTERN_DETECTED      = "aml_pattern_detected"
+    KEY_ROTATED               = "key_rotated"
+    RULE_TRIGGERED            = "rule_triggered"
+    MONITORING_STARTED        = "monitoring_started"
+    MONITORING_STOPPED        = "monitoring_stopped"
 
 
 @dataclass

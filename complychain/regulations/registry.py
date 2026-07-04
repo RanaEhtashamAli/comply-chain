@@ -58,19 +58,21 @@ class RegulationRegistry:
 
 
 def _build_default_registry() -> RegulationRegistry:
-    """Import and register all 4 built-in regulations.
+    """Import and register all built-in regulations.
     Deferred imports inside the function body break any circular-import risk.
     """
     from .glba import GLBARegulation
     from .pci_dss import PCIDSSRegulation
     from .dora import DORARegulation
     from .soc2 import SOC2Regulation
+    from .hipaa import HIPAARegulation
 
     registry = RegulationRegistry()
     registry.register(GLBARegulation())
     registry.register(PCIDSSRegulation())
     registry.register(DORARegulation())
     registry.register(SOC2Regulation())
+    registry.register(HIPAARegulation())
     return registry
 
 

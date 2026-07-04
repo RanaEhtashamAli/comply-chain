@@ -19,6 +19,14 @@ class AuditVerificationResult:
     tampered_entries: List[int] = field(default_factory=list)
     findings: List[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "total_entries": self.total_entries,
+            "tampered_entries": self.tampered_entries,
+            "findings": self.findings,
+        }
+
 
 def _compute_chain_hash(prev_hash: str, merkle_root: str, sig_hex: str) -> str:
     """Shared hash formula — must match GLBAAuditor.log_transaction() exactly."""

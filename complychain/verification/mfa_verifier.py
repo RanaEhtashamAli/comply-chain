@@ -21,6 +21,15 @@ class MFAVerificationResult:
     expired_users: List[str] = field(default_factory=list)
     findings: List[str] = field(default_factory=list)
 
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "total_users": self.total_users,
+            "invalid_secrets": self.invalid_secrets,
+            "expired_users": self.expired_users,
+            "findings": self.findings,
+        }
+
 
 class MFAVerifier:
     """Validates TOTP secrets stored by the MFA module."""

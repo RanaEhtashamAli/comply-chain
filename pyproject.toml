@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "complychain"
-version = "2.0.0"
-description = "Enterprise compliance toolkit: GLBA, PCI-DSS, DORA, SOC 2 — quantum-safe crypto, ML anomaly detection, audit chain, webhooks"
+version = "3.0.0"
+description = "Enterprise compliance toolkit: GLBA, PCI-DSS, DORA, SOC 2, HIPAA — quantum-safe crypto, graph AML detection, SAR generation, ML anomaly detection, audit chain, REST API, webhooks"
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -15,9 +15,9 @@ maintainers = [
     {name = "Rana Ehtasham Ali", email = "ranaehtashamali1@gmail.com"}
 ]
 keywords = [
-    "glba", "pci-dss", "dora", "soc2", "compliance", "regtech", "fintech",
+    "glba", "pci-dss", "dora", "soc2", "hipaa", "compliance", "regtech", "fintech",
     "cryptography", "quantum-safe", "audit", "anomaly-detection", "webhook",
-    "risk-management", "regulatory", "post-quantum"
+    "risk-management", "regulatory", "post-quantum", "aml", "sar", "bsa"
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -56,6 +56,8 @@ dependencies = [
     "rich>=13.0.0",
     "pqcrypto (>=0.3.4,<0.4.0)",
     "pypdf>=3.0.0",
+    "networkx>=3.0",
+    "simpleeval>=0.9.13",
 ]
 
 [project.optional-dependencies]
@@ -68,6 +70,13 @@ pqcrypto = [
 ]
 legacy = [
     "pqcrypto>=0.3.0",
+]
+api = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+]
+monitoring = [
+    "apscheduler>=3.10.0",
 ]
 dev = [
     "pytest>=7.0.0",
@@ -232,7 +241,11 @@ exclude_lines = [
 
 [dependency-groups]
 dev = [
+    "apscheduler>=3.11.3",
     "build>=1.4.4",
+    "fastapi>=0.128.8",
+    "httpx>=0.28.1",
     "twine>=6.2.0",
+    "uvicorn[standard]>=0.39.0",
 ]
 

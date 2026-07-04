@@ -2,7 +2,7 @@
 
 **Multi-Regulation Compliance Toolkit with Quantum-Safe Cryptography**
 
-ComplyChain is an open-source Python library for financial compliance engineering. It covers GLBA §314.4, PCI-DSS 4.0, DORA, and SOC 2 — with post-quantum cryptography (ML-DSA-65 / NIST FIPS 204), ML-based anomaly detection, Merkle-chained audit trails, and a webhook event system.
+ComplyChain is an open-source Python library for financial compliance engineering. It covers GLBA §314.4, PCI-DSS 4.0, DORA, SOC 2, and HIPAA — with post-quantum cryptography (ML-DSA-65 / NIST FIPS 204), graph-based AML detection, SAR narrative generation, ML-based anomaly detection, Merkle-chained audit trails, a configurable rule engine, SIEM export, evidence packaging, key rotation, and a webhook event system.
 
 - 📦 PyPI: [`pip install complychain`](https://pypi.org/project/complychain/)
 - 🌐 GitHub: [github.com/RanaEhtashamAli/comply-chain](https://github.com/RanaEhtashamAli/comply-chain)
@@ -12,7 +12,7 @@ ComplyChain is an open-source Python library for financial compliance engineerin
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![GLBA](https://img.shields.io/badge/GLBA-§314.4-green.svg)](https://www.ftc.gov/business-guidance/privacy-security/gramm-leach-bliley-act)
 [![FIPS](https://img.shields.io/badge/FIPS-204%20ML--DSA-blue.svg)](https://csrc.nist.gov/pubs/fips/204/final)
-[![Coverage](https://img.shields.io/badge/coverage-95%25-brightgreen.svg)]()
+[![Coverage](https://img.shields.io/badge/coverage-89%25-brightgreen.svg)]()
 
 ---
 
@@ -20,16 +20,25 @@ ComplyChain is an open-source Python library for financial compliance engineerin
 
 | Capability | Module |
 |------------|--------|
-| Multi-regulation assessment (GLBA, PCI-DSS, DORA, SOC 2) | `complychain.regulations` |
+| Multi-regulation assessment (GLBA, PCI-DSS, DORA, SOC 2, HIPAA) | `complychain.regulations` |
 | Quantum-safe digital signatures (ML-DSA-65 / FIPS 204) | `complychain.crypto_engine` |
 | Real-time ML anomaly detection (Isolation Forest, LOF, Z-score ensemble) | `complychain.detection` |
+| Graph-based AML detection (structuring, layering, fan-out, common beneficiary) | `complychain.detection.graph` |
 | Velocity / structuring detection | `complychain.detection.velocity` |
 | Model drift detection (Page-Hinkley) | `complychain.detection.drift` |
+| SAR narrative generation (FinCEN BSA E-Filing 2.0 XML + PDF) | `complychain.reporting` |
+| Risk explainability (ranked factors, RISK_WEIGHTS back-calculation) | `complychain.reporting` |
+| Configurable YAML rule engine (safe eval via simpleeval) | `complychain.rules` |
 | Merkle-chained audit log with integrity verification | `complychain.audit_system`, `complychain.verification` |
+| Automated key rotation with chain-of-custody manifest | `complychain.key_management` |
 | Assessment persistence and trend tracking (SQLite) | `complychain.persistence` |
 | In-process event bus + HTTP webhooks + Slack notifications | `complychain.events` |
+| SIEM export (CEF / JSON / LEEF / syslog) | `complychain.export.siem` |
+| Signed evidence package ZIP for auditor review | `complychain.export.evidence` |
+| Continuous monitoring scheduler (APScheduler, optional) | `complychain.monitoring` |
+| REST API (FastAPI, optional: `pip install complychain[api]`) | `complychain.api` |
 | FinCEN / OFAC sanctions screening | `complychain.threat_scanner` |
-| CLI for scanning, signing, reporting, and regulation assessment | `complychain.cli` |
+| CLI — 18 commands including SAR generation, key rotation, monitoring | `complychain.cli` |
 
 ---
 
@@ -258,6 +267,7 @@ complychain regulations diff --regulation glba
 | PCI-DSS 4.0 | `pci_dss` | Any entity that processes card payments |
 | DORA (EU 2022/2554) | `dora` | EU-nexus financial entities |
 | SOC 2 Type II (AICPA 2017) | `soc2` | SaaS, fintechs, banks, credit unions |
+| HIPAA Security Rule (45 CFR §164) | `hipaa` | Covered entities and business associates handling ePHI |
 
 ### Control statuses
 
@@ -297,20 +307,29 @@ default_registry.register(MyRegulation())
 
 ```
 complychain/
-├── regulations/          # BaseRegulation, RegulationRegistry, GLBA/PCI-DSS/DORA/SOC2
-├── persistence/          # AssessmentStore (SQLite), AssessmentDiff, risk_trend()
-├── events/               # EventBus, WebhookEmitter (HMAC), SlackEmitter (Block Kit)
-├── verification/         # KeyVerifier, AuditChainVerifier, MFAVerifier
+├── regulations/          # GLBA, PCI-DSS, DORA, SOC 2, HIPAA + RegulationRegistry
+├── reporting/            # SARGenerator (FinCEN XML/PDF), ExplanationEngine
+├── rules/                # RuleEngine (YAML rules, simpleeval safe eval)
 ├── detection/
 │   ├── ml_engine.py      # MLEngine (Isolation Forest, training pipeline)
 │   ├── ensemble.py       # EnsembleDetector (IF + LOF + Z-score majority vote)
 │   ├── velocity.py       # VelocityDetector (rolling-window, per-entity)
-│   └── drift.py          # DriftDetector (Page-Hinkley change detection)
+│   ├── drift.py          # DriftDetector (Page-Hinkley change detection)
+│   └── graph.py          # AMLGraph (structuring, layering, fan-out, common beneficiary)
+├── export/
+│   ├── siem.py           # SIEMExporter (CEF, JSON, LEEF, syslog)
+│   └── evidence.py       # EvidencePackage (signed ZIP for auditors)
+├── key_management/       # KeyRotationManager (archive, generate, sign manifest)
+├── monitoring/           # MonitoringScheduler (APScheduler, optional)
+├── api/                  # FastAPI app (optional: pip install complychain[api])
+├── persistence/          # AssessmentStore (SQLite), AssessmentDiff, risk_trend()
+├── events/               # EventBus, WebhookEmitter (HMAC), SlackEmitter (Block Kit)
+├── verification/         # KeyVerifier, AuditChainVerifier, MFAVerifier
 ├── audit_system.py       # GLBAAuditor (Merkle-chain, PDF reports)
 ├── crypto_engine.py      # QuantumSafeSigner (ML-DSA-65 / RSA-4096 fallback)
 ├── threat_scanner.py     # GLBAScanner (FinCEN thresholds, OFAC, sanctions)
 ├── compliance/           # GLBA engine, MFA, vendor management, training
-└── cli.py                # Typer CLI
+└── cli.py                # Typer CLI (18 commands)
 ```
 
 ### Audit chain integrity
@@ -411,7 +430,7 @@ uv run pytest
 uv run pytest --cov=complychain --cov-report=term-missing
 ```
 
-Current test suite: **614 tests, 95% coverage**.
+Current test suite: **781 tests, 89% coverage**.
 
 ---
 

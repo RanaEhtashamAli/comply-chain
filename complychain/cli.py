@@ -9,7 +9,7 @@ import json
 import sys
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -874,6 +874,232 @@ def regulations_diff(
                 ":heavy_check_mark:" if c.changed else "",
             )
         console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# generate-sar
+# ---------------------------------------------------------------------------
+
+@app.command("generate-sar")
+def generate_sar(
+    scan_result: Annotated[Path, typer.Option("--scan-result", help="JSON file with scan() output")] = None,
+    transaction: Annotated[Path, typer.Option("--transaction", help="JSON file with original tx_data")] = None,
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output file (.pdf, .xml, or .json)")] = Path("sar_report.pdf"),
+    filing_type: Annotated[str, typer.Option("--filing-type", help="INITIAL, CORRECT, or JOINT")] = "INITIAL",
+):
+    """Generate a Suspicious Activity Report (SAR) from a scan result."""
+    import json as _json
+    from .reporting import SARGenerator
+
+    if scan_result is None or not scan_result.exists():
+        console.print("[red]--scan-result is required and must exist.[/red]")
+        raise typer.Exit(1)
+
+    scan_data = _json.loads(scan_result.read_text())
+    tx_data: dict = _json.loads(transaction.read_text()) if transaction and transaction.exists() else {}
+
+    sar = SARGenerator().generate(scan_data, tx_data, filing_type)
+
+    suffix = output.suffix.lower()
+    if suffix == ".pdf":
+        output.write_bytes(sar.to_pdf())
+        console.print(f"[green]SAR PDF written to {output}[/green]")
+    elif suffix == ".xml":
+        output.write_text(sar.to_xml())
+        console.print(f"[green]SAR XML written to {output}[/green]")
+    else:
+        import json as _json2
+        output.write_text(_json2.dumps(sar.to_dict(), indent=2, default=str))
+        console.print(f"[green]SAR JSON written to {output}[/green]")
+
+
+# ---------------------------------------------------------------------------
+# serve
+# ---------------------------------------------------------------------------
+
+@app.command("serve")
+def serve(
+    host: Annotated[str, typer.Option("--host", help="Bind host")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Bind port")] = 8080,
+    reload: Annotated[bool, typer.Option("--reload/--no-reload", help="Auto-reload")] = False,
+):
+    """Start the ComplyChain REST API server (requires: pip install 'complychain[api]')."""
+    try:
+        import uvicorn
+        from .api import create_app
+        uvicorn.run(create_app(), host=host, port=port, reload=reload)
+    except ImportError:
+        console.print(
+            "[red]FastAPI/uvicorn not installed. Run: pip install 'complychain[api]'[/red]"
+        )
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# rules commands
+# ---------------------------------------------------------------------------
+
+rules_app = typer.Typer(help="Rule engine commands.")
+app.add_typer(rules_app, name="rules")
+
+
+@rules_app.command("validate")
+def rules_validate(
+    file: Annotated[Path, typer.Argument(help="Path to YAML rules file")],
+):
+    """Validate a YAML rules file for syntax errors."""
+    from .rules import RuleEngine
+    engine = RuleEngine.load(file)
+    errors = engine.validate()
+    if not errors:
+        console.print(f"[green]Rules file is valid ({len(engine._rules)} rules).[/green]")
+    else:
+        console.print(f"[red]{len(errors)} validation error(s):[/red]")
+        for err in errors:
+            console.print(f"  • {err}")
+        raise typer.Exit(1)
+
+
+# ---------------------------------------------------------------------------
+# monitor commands
+# ---------------------------------------------------------------------------
+
+monitor_app = typer.Typer(help="Continuous monitoring commands.")
+app.add_typer(monitor_app, name="monitor")
+
+
+@monitor_app.command("start")
+def monitor_start(
+    regulation: Annotated[str, typer.Option("--regulation", help="Regulation ID (e.g. glba)")],
+    schedule: Annotated[str, typer.Option("--schedule", help="Cron expression (e.g. '0 8 * * *')")] = "0 8 * * *",
+    name: Annotated[str, typer.Option("--name", help="Institution name")] = "My Institution",
+    entity_type: Annotated[str, typer.Option("--entity-type")] = "fintech",
+):
+    """Start continuous monitoring for a regulation (requires: pip install 'complychain[monitoring]')."""
+    try:
+        from .monitoring import MonitoringScheduler
+        from .regulations import InstitutionProfile
+        profile = InstitutionProfile(name=name, entity_type=entity_type)
+        sched = MonitoringScheduler()
+        job_id = sched.schedule(regulation, schedule, profile)
+        sched.start()
+        console.print(
+            f"[green]Monitoring started for '{regulation}' — "
+            f"job_id={job_id}, schedule='{schedule}'. "
+            f"Press Ctrl+C to stop.[/green]"
+        )
+        import time as _time
+        try:
+            while True:
+                _time.sleep(60)
+        except KeyboardInterrupt:
+            sched.stop()
+            console.print("[yellow]Monitoring stopped.[/yellow]")
+    except ImportError:
+        console.print(
+            "[red]apscheduler not installed. Run: pip install 'complychain[monitoring]'[/red]"
+        )
+        raise typer.Exit(1)
+
+
+@monitor_app.command("list")
+def monitor_list():
+    """List scheduled monitoring jobs (informational)."""
+    console.print(
+        "[yellow]Use MonitoringScheduler().list_jobs() in Python to inspect a live scheduler.[/yellow]"
+    )
+
+
+@monitor_app.command("stop")
+def monitor_stop(
+    job_id: Annotated[str, typer.Option("--job-id", help="Job ID to stop")],
+):
+    """Print instructions to stop a scheduled monitoring job."""
+    console.print(
+        f"[yellow]To stop job '{job_id}', call MonitoringScheduler().unschedule('{job_id}') "
+        f"on the running scheduler instance.[/yellow]"
+    )
+
+
+# ---------------------------------------------------------------------------
+# export-evidence
+# ---------------------------------------------------------------------------
+
+@app.command("export-evidence")
+def export_evidence(
+    output: Annotated[Path, typer.Option("--output", "-o", help="Output ZIP path")] = None,
+    regulations: Annotated[str, typer.Option("--regulations", help="Comma-separated regulation IDs (default: all)")] = "",
+    sign: Annotated[bool, typer.Option("--sign/--no-sign", help="Sign the manifest")] = True,
+):
+    """Export a signed evidence package ZIP for auditor review."""
+    from .export.evidence import EvidencePackage
+    reg_list = [r.strip() for r in regulations.split(",") if r.strip()] or None
+    path = EvidencePackage().build(regulations=reg_list, output_path=output, sign=sign)
+    console.print(f"[green]Evidence package written to {path}[/green]")
+
+
+# ---------------------------------------------------------------------------
+# key-rotation commands
+# ---------------------------------------------------------------------------
+
+key_rotation_app = typer.Typer(help="Key rotation and lifecycle management.")
+app.add_typer(key_rotation_app, name="key-rotation")
+
+
+@key_rotation_app.command("check")
+def key_rotation_check():
+    """Check whether key rotation is needed."""
+    from .key_management import KeyRotationManager
+    from .verification import KeyVerifier
+    mgr = KeyRotationManager()
+    result = KeyVerifier().verify()
+    age = result.key_age_days
+    needs = mgr.needs_rotation()
+    if age is not None:
+        console.print(f"Key age: {age} days")
+    color = "red" if needs else "green"
+    console.print(
+        f"[{color}]Rotation {'REQUIRED' if needs else 'not required'}.[/{color}]"
+    )
+
+
+@key_rotation_app.command("rotate")
+def key_rotation_rotate(
+    dry_run: Annotated[bool, typer.Option("--dry-run/--no-dry-run")] = False,
+    backup_dir: Annotated[Path, typer.Option("--backup-dir")] = None,
+):
+    """Rotate the cryptographic key pair."""
+    from .key_management import KeyRotationManager
+    mgr = KeyRotationManager()
+    result = mgr.rotate(backup_dir=backup_dir, dry_run=dry_run)
+    if result.ok:
+        prefix = "[dim][DRY RUN] [/dim]" if dry_run else ""
+        console.print(f"{prefix}[green]Key rotation successful.[/green]")
+        console.print(f"  Archive: {result.old_key_archived}")
+        console.print(f"  New key dir: {result.new_key_dir}")
+    else:
+        console.print("[red]Key rotation failed:[/red]")
+        for f in result.findings:
+            console.print(f"  • {f}")
+        raise typer.Exit(1)
+
+
+@key_rotation_app.command("history")
+def key_rotation_history(
+    backup_dir: Annotated[Path, typer.Option("--backup-dir")] = None,
+):
+    """List past key rotations."""
+    from .key_management import KeyRotationManager
+    history = KeyRotationManager().rotation_history(backup_dir=backup_dir)
+    if not history:
+        console.print("[yellow]No rotation history found.[/yellow]")
+        return
+    console.print(f"Found {len(history)} rotation(s):")
+    for entry in history:
+        console.print(
+            f"  {entry.get('rotated_at', '?')}  "
+            f"{entry.get('old_algorithm', '?')} → {entry.get('new_algorithm', '?')}"
+        )
 
 
 if __name__ == "__main__":

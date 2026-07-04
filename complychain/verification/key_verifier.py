@@ -23,6 +23,15 @@ class KeyVerificationResult:
     key_age_days: Optional[int] = None
     round_trip_passed: Optional[bool] = None
 
+    def to_dict(self) -> dict:
+        return {
+            "ok": self.ok,
+            "findings": self.findings,
+            "key_algorithm": self.key_algorithm,
+            "key_age_days": self.key_age_days,
+            "round_trip_passed": self.round_trip_passed,
+        }
+
 
 class KeyVerifier:
     """Verifies an in-use cryptographic key is not expired and round-trips correctly."""

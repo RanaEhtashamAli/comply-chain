@@ -29,6 +29,7 @@ from .regulations import (
     PCIDSSRegulation,
     DORARegulation,
     SOC2Regulation,
+    HIPAARegulation,
 )
 from .persistence import AssessmentStore, AssessmentRecord, AssessmentDiff
 from .events import EventBus, EventType, Event, WebhookEmitter, SlackEmitter, default_bus
@@ -37,4 +38,9 @@ from .verification import (
     AuditChainVerifier, AuditVerificationResult,
     MFAVerifier, MFAVerificationResult,
 )
-from .detection import VelocityDetector, EnsembleDetector, DriftDetector
+from .detection import VelocityDetector, EnsembleDetector, DriftDetector, AMLGraph, AMLPattern
+from .reporting import SARGenerator, SARReport, ExplanationEngine, Explanation
+from .rules import RuleEngine, RuleResult
+from .export import SIEMExporter, EvidencePackage
+from .key_management import KeyRotationManager, KeyRotationResult
+from .monitoring import MonitoringScheduler
