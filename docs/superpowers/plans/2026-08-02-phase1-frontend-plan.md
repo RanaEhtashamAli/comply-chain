@@ -290,6 +290,14 @@ export interface AuditChain {
 }
 ```
 
+- [ ] **Step 1b: Create `src/vite-env.d.ts`**
+
+`import.meta.env` (used in Step 2 below) needs Vite's ambient types:
+
+```ts
+/// <reference types="vite/client" />
+```
+
 - [ ] **Step 2: Create `src/lib/api.ts`**
 
 ```ts
