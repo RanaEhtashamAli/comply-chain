@@ -12,8 +12,11 @@ Usage:
     complychain serve --port 8080
 """
 
+import os
+
 try:
     from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
     from .auth import APIKeyMiddleware
     from .routes.health import router as health_router
     from .routes.scan import router as scan_router
@@ -32,7 +35,25 @@ try:
             redoc_url="/redoc",
         )
 
+        # Starlette wraps middleware in the reverse order added, so the
+        # last one added ends up outermost and runs first per request.
+        # CORSMiddleware must be added last so it intercepts preflight
+        # OPTIONS requests before APIKeyMiddleware can reject them.
         app.add_middleware(APIKeyMiddleware)
+
+        allowed_origins = [
+            origin.strip()
+            for origin in os.environ.get(
+                "CORS_ALLOWED_ORIGINS", "https://complychain.dev"
+            ).split(",")
+            if origin.strip()
+        ]
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=allowed_origins,
+            allow_methods=["GET", "POST"],
+            allow_headers=["X-ComplyChain-API-Key", "Content-Type"],
+        )
 
         app.include_router(health_router)
         app.include_router(scan_router)
