@@ -1,3 +1,24 @@
+import { Navigate, Route, Routes } from "react-router-dom";
+import { ApiKeyGate } from "@/components/ApiKeyGate";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { AssessmentPage } from "@/pages/AssessmentPage";
+import { ScannerPage } from "@/pages/ScannerPage";
+import { AuditPage } from "@/pages/AuditPage";
+
 export default function App() {
-  return <div className="p-6">ComplyChain frontend — scaffold OK</div>;
+  return (
+    <ApiKeyGate>
+      <div className="flex">
+        <Sidebar />
+        <main className="flex-1">
+          <Routes>
+            <Route path="/" element={<Navigate to="/assessment" replace />} />
+            <Route path="/assessment" element={<AssessmentPage />} />
+            <Route path="/scanner" element={<ScannerPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+          </Routes>
+        </main>
+      </div>
+    </ApiKeyGate>
+  );
 }
