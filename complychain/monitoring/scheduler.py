@@ -81,6 +81,13 @@ class MonitoringScheduler:
         del self._jobs[job_id]
         return True
 
+    def restore_job(self, job: ScheduledJob) -> None:
+        """Register an already-fully-formed ScheduledJob (used to rehydrate persisted jobs
+        without losing their original job_id/last_run/last_status, unlike schedule())."""
+        self._jobs[job.job_id] = job
+        if self._scheduler is not None:
+            self._add_apscheduler_job(job)
+
     def start(self) -> None:
         try:
             from apscheduler.schedulers.background import BackgroundScheduler

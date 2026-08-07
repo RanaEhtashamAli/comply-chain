@@ -157,3 +157,33 @@ def test_scheduled_job_defaults():
     )
     assert job.last_run is None
     assert job.last_status is None
+
+
+def test_restore_job_preserves_identity():
+    from datetime import datetime, timezone
+    sched = MonitoringScheduler()
+    job = ScheduledJob(
+        job_id="fixed-id-123",
+        regulation_id="glba",
+        cron="0 8 * * *",
+        profile=_profile(),
+        last_run=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        last_status="COMPLIANT",
+    )
+    sched.restore_job(job)
+    jobs = sched.list_jobs()
+    assert len(jobs) == 1
+    assert jobs[0].job_id == "fixed-id-123"
+    assert jobs[0].last_run == datetime(2026, 1, 1, tzinfo=timezone.utc)
+    assert jobs[0].last_status == "COMPLIANT"
+
+
+def test_restore_job_works_when_scheduler_running():
+    sched = MonitoringScheduler()
+    sched.start()
+    try:
+        job = ScheduledJob(job_id="abc", regulation_id="glba", cron="0 8 * * *", profile=_profile())
+        sched.restore_job(job)
+        assert len(sched.list_jobs()) == 1
+    finally:
+        sched.stop()
