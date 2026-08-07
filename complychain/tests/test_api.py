@@ -249,3 +249,107 @@ def test_verify_with_no_key_yet_returns_404(signing_client):
         },
     )
     assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Keys / key-rotation endpoints
+# ---------------------------------------------------------------------------
+
+def test_keys_public_404_before_any_key_exists(signing_client):
+    r = signing_client.get("/keys/public")
+    assert r.status_code == 404
+
+
+def test_keys_public_after_sign(signing_client):
+    signing_client.post("/sign", files={"file": ("doc.txt", b"hello")})
+    r = signing_client.get("/keys/public")
+    assert r.status_code == 200
+    assert "PUBLIC KEY" in r.text
+
+
+def test_keys_generate_never_returns_private_key(signing_client):
+    r = signing_client.post("/keys/generate")
+    assert r.status_code == 200
+    body = r.json()
+    assert "public_key" in body
+    assert "private_key" not in body
+    assert "PRIVATE KEY" not in str(body)
+
+
+def test_keys_generate_replaces_active_key(signing_client):
+    signing_client.post("/sign", files={"file": ("doc.txt", b"hello")})
+    old_pub = signing_client.get("/keys/public").text
+    signing_client.post("/keys/generate")
+    new_pub = signing_client.get("/keys/public").text
+    assert old_pub != new_pub
+
+
+def test_keys_import_replaces_active_key(signing_client):
+    from complychain.crypto_engine import QuantumSafeSigner
+    external_signer = QuantumSafeSigner()
+    external_signer.generate_keys()
+    priv_pem = external_signer.export_private_key_pem()
+    pub_pem = external_signer.export_public_key_pem()
+
+    r = signing_client.post("/keys/import", json={
+        "private_key_pem": priv_pem,
+        "public_key_pem": pub_pem,
+    })
+    assert r.status_code == 200
+    assert signing_client.get("/keys/public").text.strip() == pub_pem.strip()
+
+
+def test_keys_import_malformed_pem_returns_400(signing_client):
+    r = signing_client.post("/keys/import", json={
+        "private_key_pem": "not a real key",
+        "public_key_pem": "also not real",
+    })
+    assert r.status_code == 400
+
+
+def test_key_rotation_check_before_any_key(signing_client):
+    r = signing_client.get("/key-rotation/check")
+    assert r.status_code == 200
+    assert r.json()["ok"] is False
+
+
+def test_key_rotation_check_after_sign(signing_client):
+    signing_client.post("/sign", files={"file": ("doc.txt", b"hello")})
+    r = signing_client.get("/key-rotation/check")
+    assert r.json()["ok"] is True
+    assert r.json()["round_trip_passed"] is True
+
+
+def test_key_rotation_rotate_succeeds(signing_client):
+    signing_client.post("/sign", files={"file": ("doc.txt", b"hello")})
+    r = signing_client.post("/key-rotation/rotate")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+
+def test_key_rotation_rotate_leaves_working_key_behind(signing_client):
+    """Regression test for the fixed rotate() bug: sign/verify must work after rotating."""
+    signing_client.post("/sign", files={"file": ("doc.txt", b"hello")})
+    signing_client.post("/key-rotation/rotate")
+    sign_r = signing_client.post("/sign", files={"file": ("doc2.txt", b"world")})
+    assert sign_r.status_code == 200
+    verify_r = signing_client.post(
+        "/verify",
+        files={
+            "file": ("doc2.txt", b"world"),
+            "signature": ("doc2.txt.sig", sign_r.content),
+        },
+    )
+    assert verify_r.json()["valid"] is True
+
+
+def test_key_rotation_history_accumulates_across_operations(signing_client):
+    signing_client.post("/sign", files={"file": ("doc.txt", b"hello")})
+    signing_client.post("/key-rotation/rotate")
+    signing_client.post("/keys/generate")
+    r = signing_client.get("/key-rotation/history")
+    assert r.status_code == 200
+    history = r.json()
+    assert len(history) == 2
+    actions = {entry.get("action") for entry in history}
+    assert actions == {"rotation", "generation"}

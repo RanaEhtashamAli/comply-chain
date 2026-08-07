@@ -23,6 +23,7 @@ try:
     from .routes.regulations import router as regulations_router
     from .routes.audit import router as audit_router
     from .routes.sign import router as sign_router
+    from .routes.keys import keys_router, key_rotation_router
 
     def create_app() -> FastAPI:
         app = FastAPI(
@@ -61,6 +62,8 @@ try:
         app.include_router(regulations_router)
         app.include_router(audit_router)
         app.include_router(sign_router)
+        app.include_router(keys_router)
+        app.include_router(key_rotation_router)
 
         return app
 
