@@ -25,6 +25,7 @@ try:
     from .routes.sign import router as sign_router
     from .routes.keys import keys_router, key_rotation_router
     from .routes.sar import router as sar_router
+    from .routes.monitor import router as monitor_router
 
     def create_app() -> FastAPI:
         app = FastAPI(
@@ -54,7 +55,7 @@ try:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
-            allow_methods=["GET", "POST"],
+            allow_methods=["GET", "POST", "DELETE"],
             allow_headers=["X-ComplyChain-API-Key", "Content-Type"],
         )
 
@@ -66,6 +67,7 @@ try:
         app.include_router(keys_router)
         app.include_router(key_rotation_router)
         app.include_router(sar_router)
+        app.include_router(monitor_router)
 
         return app
 

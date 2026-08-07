@@ -477,3 +477,108 @@ def test_audit_evidence_specific_regulations(client):
     manifest = zf.read("manifest.json")
     import json as _json
     assert _json.loads(manifest)["signature"] is None
+
+
+# ---------------------------------------------------------------------------
+# monitor endpoints
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def monitor_client(tmp_path, monkeypatch):
+    import complychain.api.routes.monitor as monitor_module
+    monkeypatch.setenv("COMPLYCHAIN_MONITOR_DIR", str(tmp_path / "monitor"))
+    monitor_module._scheduler = None
+    app = create_app()
+    yield TestClient(app)
+    if monitor_module._scheduler is not None:
+        monitor_module._scheduler.stop()
+    monitor_module._scheduler = None
+
+
+def test_create_monitor_unknown_regulation_400(monitor_client):
+    r = monitor_client.post("/monitor", json={
+        "regulation": "not-a-real-regulation", "schedule": "0 8 * * *", "name": "Test Bank",
+    })
+    assert r.status_code == 400
+
+
+def test_create_monitor_bad_cron_wrong_token_count_400(monitor_client):
+    r = monitor_client.post("/monitor", json={
+        "regulation": "glba", "schedule": "not a cron", "name": "Test Bank",
+    })
+    assert r.status_code == 400
+
+
+def test_create_monitor_bad_cron_out_of_range_400(monitor_client):
+    r = monitor_client.post("/monitor", json={
+        "regulation": "glba", "schedule": "99 8 * * *", "name": "Test Bank",
+    })
+    assert r.status_code == 400
+
+
+def test_create_and_list_monitor(monitor_client):
+    r = monitor_client.post("/monitor", json={
+        "regulation": "glba", "schedule": "0 8 * * *", "name": "Test Bank",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["regulation_id"] == "glba"
+    assert body["cron"] == "0 8 * * *"
+    assert body["profile"]["name"] == "Test Bank"
+
+    r2 = monitor_client.get("/monitor")
+    assert r2.status_code == 200
+    assert len(r2.json()) == 1
+
+
+def test_delete_monitor(monitor_client):
+    r = monitor_client.post("/monitor", json={
+        "regulation": "glba", "schedule": "0 8 * * *", "name": "Test Bank",
+    })
+    job_id = r.json()["job_id"]
+
+    r2 = monitor_client.delete(f"/monitor/{job_id}")
+    assert r2.status_code == 204
+
+    r3 = monitor_client.get("/monitor")
+    assert r3.json() == []
+
+
+def test_delete_monitor_twice_second_is_404(monitor_client):
+    r = monitor_client.post("/monitor", json={
+        "regulation": "glba", "schedule": "0 8 * * *", "name": "Test Bank",
+    })
+    job_id = r.json()["job_id"]
+    monitor_client.delete(f"/monitor/{job_id}")
+    r2 = monitor_client.delete(f"/monitor/{job_id}")
+    assert r2.status_code == 404
+
+
+def test_monitor_persists_across_restart(tmp_path, monkeypatch):
+    """The core regression this phase is built around: jobs must survive the
+    scheduler singleton being torn down and recreated (simulating a container
+    restart), as long as COMPLYCHAIN_MONITOR_DIR points at the same volume."""
+    import complychain.api.routes.monitor as monitor_module
+    monkeypatch.setenv("COMPLYCHAIN_MONITOR_DIR", str(tmp_path / "monitor"))
+    monitor_module._scheduler = None
+
+    app1 = create_app()
+    client1 = TestClient(app1)
+    r = client1.post("/monitor", json={
+        "regulation": "glba", "schedule": "0 8 * * *", "name": "Test Bank",
+    })
+    assert r.status_code == 200
+    job_id = r.json()["job_id"]
+    monitor_module._scheduler.stop()
+
+    # Simulate restart: reset the singleton, build a fresh app/client.
+    monitor_module._scheduler = None
+    app2 = create_app()
+    client2 = TestClient(app2)
+    r2 = client2.get("/monitor")
+    assert r2.status_code == 200
+    job_ids = [j["job_id"] for j in r2.json()]
+    assert job_id in job_ids
+
+    monitor_module._scheduler.stop()
+    monitor_module._scheduler = None
