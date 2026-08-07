@@ -582,3 +582,29 @@ def test_monitor_persists_across_restart(tmp_path, monkeypatch):
 
     monitor_module._scheduler.stop()
     monitor_module._scheduler = None
+
+
+# ---------------------------------------------------------------------------
+# admin: sanctions-status, compliance/show
+# ---------------------------------------------------------------------------
+
+def test_sanctions_status(client):
+    r = client.get("/sanctions-status")
+    assert r.status_code == 200
+    body = r.json()
+    assert "sanctions_cache_status" in body
+    assert "fincen_api_key_configured" in body
+
+
+def test_compliance_show_row_count(client):
+    r = client.get("/compliance/show")
+    assert r.status_code == 200
+    body = r.json()
+    assert len(body) == 13
+
+
+def test_compliance_show_unconfigured_by_default(client):
+    r = client.get("/compliance/show")
+    body = r.json()
+    assert body[0]["section"] == "§314.4(b)"
+    assert body[0]["configured"] is False
