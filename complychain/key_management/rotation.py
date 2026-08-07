@@ -1,12 +1,15 @@
 """
 KeyRotationManager — automated lifecycle management for QuantumSafeSigner key pairs.
 
-Rotation process:
+Rotation/generate/import all share one archive-then-replace step:
   1. Archive current key pair to backup_dir/{timestamp}/
-  2. Generate a new key pair via QuantumSafeSigner.generate_keys()
-  3. Write new PEM files + updated keystore.json
-  4. Sign a rotation manifest with the OLD key (proves chain of custody)
-  5. Emit KEY_ROTATED event via the default event bus
+  2. Sign a manifest with the OLD key (proves chain of custody), if one existed
+  3. Write the new key pair as plaintext private_key_*.pem / public_key_*.pem —
+     the same convention _resolve_keys() (CLI) and KeyVerifier already read —
+     plus a keystore.json sidecar holding only {"algorithm", "created_at"} for
+     age tracking (NOT the password-encrypted format save_keys()/load_keys() use;
+     those are a separate, unrelated storage path this module doesn't touch)
+  4. Emit KEY_ROTATED via the default event bus
 
 Usage:
     mgr = KeyRotationManager()
@@ -69,12 +72,11 @@ class KeyRotationManager:
         backup_dir: Optional[Path] = None,
         dry_run: bool = False,
     ) -> KeyRotationResult:
-        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
-        backup_root = backup_dir or (self._key_dir.parent / "key_backups")
-        archive_dir = backup_root / ts
-
         if dry_run:
-            manifest = self._build_manifest(ts, algorithm="<dry-run>", signed=False)
+            ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+            backup_root = backup_dir or (self._key_dir.parent / "key_backups")
+            archive_dir = backup_root / ts
+            manifest = self._build_manifest(ts, algorithm="<dry-run>", signed=False, action="rotation")
             return KeyRotationResult(
                 ok=True,
                 old_key_archived=archive_dir,
@@ -84,13 +86,73 @@ class KeyRotationManager:
                 dry_run=True,
             )
 
+        from ..crypto_engine import QuantumSafeSigner
+        new_signer = QuantumSafeSigner()
+        try:
+            new_signer.generate_keys()
+        except Exception as exc:
+            return KeyRotationResult(
+                ok=False,
+                old_key_archived=None,
+                new_key_dir=self._key_dir,
+                findings=[f"Key generation failed: {exc}"],
+            )
+        return self._replace_key(new_signer, backup_dir=backup_dir, action="rotation")
+
+    def generate(
+        self,
+        algorithm: Optional[str] = None,
+        backup_dir: Optional[Path] = None,
+    ) -> KeyRotationResult:
+        """Generate a fresh key pair and make it the active institutional key."""
+        from ..crypto_engine import QuantumSafeSigner
+        new_signer = QuantumSafeSigner(algorithm=algorithm) if algorithm else QuantumSafeSigner()
+        try:
+            new_signer.generate_keys()
+        except Exception as exc:
+            return KeyRotationResult(
+                ok=False,
+                old_key_archived=None,
+                new_key_dir=self._key_dir,
+                findings=[f"Key generation failed: {exc}"],
+            )
+        return self._replace_key(new_signer, backup_dir=backup_dir, action="generation")
+
+    def import_key(
+        self,
+        private_key_pem: str,
+        public_key_pem: str,
+        backup_dir: Optional[Path] = None,
+    ) -> KeyRotationResult:
+        """Import caller-supplied key material and make it the active institutional key."""
+        from ..crypto_engine import QuantumSafeSigner
+        new_signer = QuantumSafeSigner()
+        try:
+            new_signer.import_private_key_pem(private_key_pem)
+            new_signer.import_public_key_pem(public_key_pem)
+            probe = b"complychain-import-probe"
+            if not new_signer.verify(probe, new_signer.sign(probe)):
+                raise ValueError("Imported key pair failed a sign/verify round-trip check.")
+        except Exception as exc:
+            return KeyRotationResult(
+                ok=False,
+                old_key_archived=None,
+                new_key_dir=self._key_dir,
+                findings=[f"Invalid key material: {exc}"],
+            )
+        return self._replace_key(new_signer, backup_dir=backup_dir, action="import")
+
+    def _replace_key(self, new_signer, backup_dir: Optional[Path], action: str) -> KeyRotationResult:
+        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        backup_root = backup_dir or (self._key_dir.parent / "key_backups")
+        archive_dir = backup_root / ts
         findings: List[str] = []
-        archive_dir.mkdir(parents=True, exist_ok=True)
 
         old_signature: Optional[bytes] = None
         old_algorithm: str = "unknown"
 
-        if self._key_dir.exists():
+        if self._key_dir.exists() and any(self._key_dir.iterdir()):
+            archive_dir.mkdir(parents=True, exist_ok=True)
             priv_pem = next(self._key_dir.glob("private_key_*.pem"), None)
             pub_pem = next(self._key_dir.glob("public_key_*.pem"), None)
             keystore_path = self._key_dir / "keystore.json"
@@ -105,7 +167,7 @@ class KeyRotationManager:
             manifest_payload = json.dumps({
                 "rotated_at": ts,
                 "algorithm": old_algorithm,
-                "action": "rotation",
+                "action": action,
             }, sort_keys=True).encode("utf-8")
 
             if priv_pem and pub_pem:
@@ -115,44 +177,49 @@ class KeyRotationManager:
                     old_signer.import_private_key_pem(priv_pem.read_text())
                     old_signer.import_public_key_pem(pub_pem.read_text())
                     old_signature = old_signer.sign(manifest_payload)
+                    if old_algorithm == "unknown":
+                        old_algorithm = old_signer.algorithm
                 except Exception as exc:
-                    findings.append(f"Could not sign rotation manifest with old key: {exc}")
+                    findings.append(f"Could not sign manifest with old key: {exc}")
 
             for f in self._key_dir.iterdir():
                 shutil.copy2(f, archive_dir / f.name)
+        else:
+            archive_dir.mkdir(parents=True, exist_ok=True)
 
-        try:
-            from ..crypto_engine import QuantumSafeSigner
-            new_signer = QuantumSafeSigner()
-            new_signer.generate_keys()
-            new_signer.save_keys(self._key_dir)
-            new_algorithm = new_signer.algorithm
-        except Exception as exc:
-            findings.append(f"Key generation failed: {exc}")
-            return KeyRotationResult(
-                ok=False,
-                old_key_archived=archive_dir,
-                new_key_dir=self._key_dir,
-                findings=findings,
-            )
+        self._key_dir.mkdir(parents=True, exist_ok=True)
+        for pattern in ("private_key_*.pem", "public_key_*.pem", "keystore.json"):
+            for f in self._key_dir.glob(pattern):
+                f.unlink()
+
+        algo_slug = new_signer.algorithm.lower().replace('-', '_').replace('+', 'plus')
+        priv_path = self._key_dir / f"private_key_{algo_slug}.pem"
+        pub_path = self._key_dir / f"public_key_{algo_slug}.pem"
+        priv_path.write_text(new_signer.export_private_key_pem())
+        pub_path.write_text(new_signer.export_public_key_pem())
+        priv_path.chmod(0o600)
+        (self._key_dir / "keystore.json").write_text(json.dumps({
+            "algorithm": new_signer.algorithm,
+            "created_at": datetime.now(tz=timezone.utc).isoformat(),
+        }, indent=2))
 
         manifest = self._build_manifest(
-            ts, algorithm=new_algorithm,
+            ts, algorithm=new_signer.algorithm,
             signed=old_signature is not None,
             old_algorithm=old_algorithm,
             signature_hex=old_signature.hex() if old_signature else None,
+            action=action,
         )
-
-        manifest_path = archive_dir / "rotation_manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2))
+        (archive_dir / "rotation_manifest.json").write_text(json.dumps(manifest, indent=2))
 
         try:
             from ..events import default_bus, Event, EventType
             default_bus.emit(Event(EventType.KEY_ROTATED, {
                 "rotated_at": ts,
                 "old_algorithm": old_algorithm,
-                "new_algorithm": new_algorithm,
+                "new_algorithm": new_signer.algorithm,
                 "archive_dir": str(archive_dir),
+                "action": action,
             }))
         except Exception:
             pass
@@ -187,6 +254,7 @@ class KeyRotationManager:
         signed: bool,
         old_algorithm: str = "unknown",
         signature_hex: Optional[str] = None,
+        action: str = "rotation",
     ) -> Dict[str, Any]:
         return {
             "rotated_at": ts,
@@ -195,4 +263,5 @@ class KeyRotationManager:
             "chain_of_custody_signed": signed,
             "manifest_signature_hex": signature_hex,
             "key_dir": str(self._key_dir),
+            "action": action,
         }

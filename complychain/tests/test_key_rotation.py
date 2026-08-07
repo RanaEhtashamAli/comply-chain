@@ -3,7 +3,6 @@
 import json
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from complychain.key_management.rotation import KeyRotationManager, KeyRotationResult
 
@@ -95,22 +94,14 @@ def test_rotate_archives_existing_keys(tmp_path):
     key_dir = tmp_path / "keys"
     key_dir.mkdir()
     (key_dir / "old_key.txt").write_text("old key content")
-
     backup_dir = tmp_path / "backups"
 
-    mock_signer = MagicMock()
-    mock_signer.algorithm = "rsa-4096"
-    mock_signer.generate_keys = MagicMock()
-    mock_signer.save_keys = MagicMock()
+    mgr = KeyRotationManager(key_dir=key_dir)
+    result = mgr.rotate(backup_dir=backup_dir, dry_run=False)
 
-    import complychain.crypto_engine as _ce
-    with patch.object(_ce, "QuantumSafeSigner", return_value=mock_signer):
-        from complychain.key_management.rotation import KeyRotationManager as KRM
-        mgr = KRM(key_dir=key_dir)
-        result = mgr.rotate(backup_dir=backup_dir, dry_run=False)
-
-    if result.old_key_archived and result.old_key_archived.exists():
-        assert (result.old_key_archived / "old_key.txt").exists()
+    assert result.ok is True
+    assert result.old_key_archived.exists()
+    assert (result.old_key_archived / "old_key.txt").exists()
 
 
 def test_rotate_emits_event(tmp_path):
@@ -123,14 +114,13 @@ def test_rotate_emits_event(tmp_path):
     key_dir.mkdir()
     mgr = KeyRotationManager(key_dir=key_dir)
     try:
-        mgr.rotate(backup_dir=tmp_path / "backups")
-    except Exception:
-        pass
+        result = mgr.rotate(backup_dir=tmp_path / "backups")
+        assert result.ok is True
     finally:
         default_bus.unsubscribe(EventType.KEY_ROTATED, handler)
 
-    # Event may or may not fire depending on key generation success
-    assert isinstance(events, list)
+    assert len(events) == 1
+    assert events[0].payload["new_algorithm"] in ("ML-DSA-65", "RSA-4096")
 
 
 def test_rotation_result_has_manifest_keys(tmp_path):
@@ -140,3 +130,92 @@ def test_rotation_result_has_manifest_keys(tmp_path):
     result = mgr.rotate(dry_run=True)
     for key in ("rotated_at", "new_algorithm", "old_algorithm", "key_dir"):
         assert key in result.rotation_manifest
+
+
+def test_rotate_twice_both_succeed(tmp_path):
+    """Regression test for the original bug: rotate() previously failed on every call
+    because it called save_keys() without the required password argument."""
+    key_dir = tmp_path / "keys"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    first = mgr.rotate()
+    second = mgr.rotate()
+    assert first.ok is True
+    assert second.ok is True
+
+
+def test_rotate_leaves_signable_verifiable_key(tmp_path):
+    """Regression test: rotate() must leave behind keys that sign/verify can actually
+    load — the original bug wrote an incompatible encrypted keystore.json instead of
+    the plaintext PEM pair _resolve_keys()/KeyVerifier expect."""
+    from complychain.crypto_engine import QuantumSafeSigner
+    key_dir = tmp_path / "keys"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    mgr.rotate()
+
+    priv_pem = next(key_dir.glob("private_key_*.pem")).read_text()
+    pub_pem = next(key_dir.glob("public_key_*.pem")).read_text()
+    signer = QuantumSafeSigner()
+    signer.import_private_key_pem(priv_pem)
+    signer.import_public_key_pem(pub_pem)
+    sig = signer.sign(b"probe")
+    assert signer.verify(b"probe", sig) is True
+
+
+def test_generate_creates_new_key(tmp_path):
+    key_dir = tmp_path / "keys"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    result = mgr.generate()
+    assert result.ok is True
+    assert (key_dir / "keystore.json").exists()
+    assert any(key_dir.glob("private_key_*.pem"))
+    assert any(key_dir.glob("public_key_*.pem"))
+
+
+def test_generate_archives_previous_key(tmp_path):
+    key_dir = tmp_path / "keys"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    mgr.generate()
+    old_pub = next(key_dir.glob("public_key_*.pem")).read_text()
+
+    result = mgr.generate()
+    assert result.ok is True
+    new_pub = next(key_dir.glob("public_key_*.pem")).read_text()
+    assert new_pub != old_pub
+    assert result.rotation_manifest["action"] == "generation"
+
+
+def test_import_key_installs_supplied_material(tmp_path):
+    from complychain.crypto_engine import QuantumSafeSigner
+    external_signer = QuantumSafeSigner()
+    external_signer.generate_keys()
+    priv_pem = external_signer.export_private_key_pem()
+    pub_pem = external_signer.export_public_key_pem()
+
+    key_dir = tmp_path / "keys"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    result = mgr.import_key(priv_pem, pub_pem)
+
+    assert result.ok is True
+    assert result.rotation_manifest["action"] == "import"
+    installed_pub = next(key_dir.glob("public_key_*.pem")).read_text()
+    assert installed_pub.strip() == pub_pem.strip()
+
+
+def test_import_key_rejects_malformed_pem(tmp_path):
+    key_dir = tmp_path / "keys"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    result = mgr.import_key("not a real key", "also not real")
+    assert result.ok is False
+    assert result.findings
+
+
+def test_rotate_then_generate_share_history(tmp_path):
+    key_dir = tmp_path / "keys"
+    backup_dir = tmp_path / "backups"
+    mgr = KeyRotationManager(key_dir=key_dir)
+    mgr.rotate(backup_dir=backup_dir)
+    mgr.generate(backup_dir=backup_dir)
+    history = mgr.rotation_history(backup_dir=backup_dir)
+    assert len(history) == 2
+    actions = {h["action"] for h in history}
+    assert actions == {"rotation", "generation"}

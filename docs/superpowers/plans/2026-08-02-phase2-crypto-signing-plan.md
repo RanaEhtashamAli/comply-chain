@@ -23,6 +23,7 @@
 **Files:**
 - Modify: `complychain/key_management/rotation.py`
 - Modify: `complychain/tests/test_key_rotation.py`
+- Modify: `complychain/tests/test_coverage_gaps.py` (only if Step 5 surfaces the call-order breakage described below)
 
 **Interfaces:**
 - Produces: `KeyRotationManager.rotate(backup_dir=None, dry_run=False) -> KeyRotationResult` (existing signature, fixed behavior), `KeyRotationManager.generate(algorithm: Optional[str] = None, backup_dir=None) -> KeyRotationResult` (new), `KeyRotationManager.import_key(private_key_pem: str, public_key_pem: str, backup_dir=None) -> KeyRotationResult` (new). `KeyRotationResult` gains no new fields — `rotation_manifest` dict now includes an `"action"` key (`"rotation"`/`"generation"`/`"import"`).
@@ -67,7 +68,7 @@ def test_rotate_emits_event(tmp_path):
         default_bus.unsubscribe(EventType.KEY_ROTATED, handler)
 
     assert len(events) == 1
-    assert events[0].data["new_algorithm"] in ("ML-DSA-65", "RSA-4096")
+    assert events[0].payload["new_algorithm"] in ("ML-DSA-65", "RSA-4096")
 ```
 
 Remove the now-unused `from unittest.mock import patch, MagicMock` import if nothing else in the file uses it (check with `grep -n "MagicMock\|patch(" complychain/tests/test_key_rotation.py` after the edit).
@@ -247,7 +248,7 @@ class KeyRotationManager:
         dry_run: bool = False,
     ) -> KeyRotationResult:
         if dry_run:
-            ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+            ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
             backup_root = backup_dir or (self._key_dir.parent / "key_backups")
             archive_dir = backup_root / ts
             manifest = self._build_manifest(ts, algorithm="<dry-run>", signed=False, action="rotation")
@@ -317,7 +318,7 @@ class KeyRotationManager:
         return self._replace_key(new_signer, backup_dir=backup_dir, action="import")
 
     def _replace_key(self, new_signer, backup_dir: Optional[Path], action: str) -> KeyRotationResult:
-        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S")
+        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
         backup_root = backup_dir or (self._key_dir.parent / "key_backups")
         archive_dir = backup_root / ts
         findings: List[str] = []
@@ -451,10 +452,12 @@ Expected: all tests PASS, including the two rewritten ones and the new regressio
 Run: `.venv/bin/python -m pytest complychain/tests/ -q`
 Expected: no new failures relative to the pre-change baseline (all tests that passed before still pass — `_replace_key`'s dry-run branch and manifest shape are unchanged, so `test_dry_run_*` and `test_rotation_result_has_manifest_keys` in the same file should be unaffected).
 
+If this surfaces failures in `complychain/tests/test_coverage_gaps.py` (`test_rotate_signs_manifest_with_old_key`, `test_rotate_sign_exception_adds_finding`, `test_rotate_keystore_malformed_continues`) — a file not otherwise touched by this plan — the cause is a real, structural side effect of this refactor: those tests use a shared `_factory()` mock that returns a different `QuantumSafeSigner` instance depending on *call order* (old-key signer 1st, new-key signer 2nd), matching the original code's order. This refactor's shared `_replace_key()` step necessarily reverses that order (the new signer is constructed by `rotate()`/`generate()`/`import_key()` *before* being passed into `_replace_key()`, which only constructs the old signer *after*, if old key material exists). Fix by swapping which mock the factory returns on which call, and by adding `export_private_key_pem`/`export_public_key_pem` mocks (returning plain strings) to whichever mock stands in for the *new* signer — `_replace_key()` calls those methods and writes their return value with `Path.write_text()`, which raises `TypeError` on an unconfigured `MagicMock`. Also remove any leftover `signer.save_keys = MagicMock()` lines in those tests — that method is no longer called.
+
 - [ ] **Step 6: Commit**
 
 ```bash
-cd "/home/lenovo/Own Projects/comply-chain" && git add complychain/key_management/rotation.py complychain/tests/test_key_rotation.py
+cd "/home/lenovo/Own Projects/comply-chain" && git add complychain/key_management/rotation.py complychain/tests/test_key_rotation.py complychain/tests/test_coverage_gaps.py
 git commit -m "Fix KeyRotationManager.rotate() and add generate()/import_key()
 
 rotate() previously called save_keys() without the required password

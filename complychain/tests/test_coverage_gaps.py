@@ -147,13 +147,17 @@ def test_rotate_signs_manifest_with_old_key(tmp_path):
 
     new_signer = MagicMock()
     new_signer.generate_keys = MagicMock()
-    new_signer.save_keys = MagicMock()
+    new_signer.export_private_key_pem = MagicMock(return_value="NEW_PRIV")
+    new_signer.export_public_key_pem = MagicMock(return_value="NEW_PUB")
     new_signer.algorithm = "rsa-4096"
 
+    # rotate() constructs the new signer first (it's passed into the shared
+    # _replace_key() step), which internally constructs the old signer second
+    # to sign the chain-of-custody manifest.
     call_count = [0]
     def _factory():
         call_count[0] += 1
-        return old_signer if call_count[0] == 1 else new_signer
+        return new_signer if call_count[0] == 1 else old_signer
 
     import complychain.crypto_engine as _ce
     with patch.object(_ce, "QuantumSafeSigner", side_effect=_factory):
@@ -178,13 +182,16 @@ def test_rotate_sign_exception_adds_finding(tmp_path):
 
     good_signer = MagicMock()
     good_signer.generate_keys = MagicMock()
-    good_signer.save_keys = MagicMock()
+    good_signer.export_private_key_pem = MagicMock(return_value="NEW_PRIV")
+    good_signer.export_public_key_pem = MagicMock(return_value="NEW_PUB")
     good_signer.algorithm = "rsa-4096"
 
+    # rotate() constructs the new (good) signer first, then the old (bad)
+    # signer second, inside the shared _replace_key() step.
     call_count = [0]
     def _factory():
         call_count[0] += 1
-        return bad_signer if call_count[0] == 1 else good_signer
+        return good_signer if call_count[0] == 1 else bad_signer
 
     import complychain.crypto_engine as _ce
     with patch.object(_ce, "QuantumSafeSigner", side_effect=_factory):
@@ -202,7 +209,8 @@ def test_rotate_keystore_malformed_continues(tmp_path):
 
     signer = MagicMock()
     signer.generate_keys = MagicMock()
-    signer.save_keys = MagicMock()
+    signer.export_private_key_pem = MagicMock(return_value="NEW_PRIV")
+    signer.export_public_key_pem = MagicMock(return_value="NEW_PUB")
     signer.algorithm = "rsa-4096"
 
     import complychain.crypto_engine as _ce
