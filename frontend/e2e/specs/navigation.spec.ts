@@ -49,5 +49,9 @@ test("the active nav link is highlighted", async ({ page }) => {
 test("an unknown route renders an empty content pane", async ({ page }) => {
   await page.goto("/definitely-not-a-route");
   await expect(page.getByRole("navigation")).toBeVisible();
-  await expect(page.locator("main h1")).toHaveCount(0);
+  // Assert the pane is entirely empty, not merely heading-less: any 404 page
+  // added later renders SOMETHING here, failing this test and signalling that
+  // finding #1 is closed. An `h1`-only check would keep passing against a 404
+  // page built without a heading, silently misreporting the gap as still open.
+  await expect(page.locator("main *")).toHaveCount(0);
 });
