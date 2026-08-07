@@ -353,3 +353,72 @@ def test_key_rotation_history_accumulates_across_operations(signing_client):
     assert len(history) == 2
     actions = {entry.get("action") for entry in history}
     assert actions == {"rotation", "generation"}
+
+
+# ---------------------------------------------------------------------------
+# generate-sar endpoint
+# ---------------------------------------------------------------------------
+
+_SAMPLE_SCAN_RESULT = {
+    "risk_score": 55,
+    "threat_flags": ["HIGH_VALUE_TRANSACTION"],
+    "fincen_compliance": {"ctr_required": False, "sar_required": False},
+}
+_SAMPLE_TX_DATA = {"amount": 15000, "transaction_type": "wire", "beneficiary": "Acme Corp"}
+
+
+def test_generate_sar_pdf_default(client):
+    r = client.post("/generate-sar", json={
+        "scan_result": _SAMPLE_SCAN_RESULT,
+        "tx_data": _SAMPLE_TX_DATA,
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content[:4] == b"%PDF"
+
+
+def test_generate_sar_xml(client):
+    r = client.post("/generate-sar", json={
+        "scan_result": _SAMPLE_SCAN_RESULT,
+        "tx_data": _SAMPLE_TX_DATA,
+        "format": "xml",
+    })
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/xml"
+    assert b"<EFilingBatchXML" in r.content
+
+
+def test_generate_sar_json(client):
+    r = client.post("/generate-sar", json={
+        "scan_result": _SAMPLE_SCAN_RESULT,
+        "tx_data": _SAMPLE_TX_DATA,
+        "format": "json",
+    })
+    assert r.status_code == 200
+    body = r.json()
+    assert body["threat_flags"] == ["HIGH_VALUE_TRANSACTION"]
+    assert body["filing_type"] == "INITIAL"
+
+
+def test_generate_sar_custom_filing_type(client):
+    r = client.post("/generate-sar", json={
+        "scan_result": _SAMPLE_SCAN_RESULT,
+        "tx_data": _SAMPLE_TX_DATA,
+        "filing_type": "CORRECT",
+        "format": "json",
+    })
+    assert r.json()["filing_type"] == "CORRECT"
+
+
+def test_generate_sar_invalid_format_400(client):
+    r = client.post("/generate-sar", json={
+        "scan_result": _SAMPLE_SCAN_RESULT,
+        "tx_data": _SAMPLE_TX_DATA,
+        "format": "docx",
+    })
+    assert r.status_code == 400
+
+
+def test_generate_sar_missing_scan_result_422(client):
+    r = client.post("/generate-sar", json={"tx_data": _SAMPLE_TX_DATA})
+    assert r.status_code == 422
