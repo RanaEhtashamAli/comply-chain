@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { to: "/scanner", label: "Scanner" },
   { to: "/audit", label: "Audit" },
   { to: "/keys", label: "Keys" },
+  { to: "/monitor", label: "Monitoring" },
 ];
 
 export function Sidebar() {

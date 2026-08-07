@@ -62,3 +62,24 @@ export interface RotationManifest {
 
 export type SarFormat = "pdf" | "xml" | "json";
 export type SarFilingType = "INITIAL" | "CORRECT" | "JOINT";
+
+export interface MonitorJob {
+  job_id: string;
+  regulation_id: string;
+  cron: string;
+  profile: AssessRequest;
+  last_run: string | null;
+  last_status: string | null;
+}
+
+export interface CreateMonitorRequest {
+  regulation: string;
+  schedule: string;
+  name: string;
+  jurisdiction: string;
+  entity_type: string;
+  processes_card_payments: boolean;
+  eu_nexus: boolean;
+  employee_count: number;
+  hipaa_covered_entity: boolean;
+}

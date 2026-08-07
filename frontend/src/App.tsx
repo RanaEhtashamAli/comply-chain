@@ -5,6 +5,7 @@ import { AssessmentPage } from "@/pages/AssessmentPage";
 import { ScannerPage } from "@/pages/ScannerPage";
 import { AuditPage } from "@/pages/AuditPage";
 import { KeysPage } from "@/pages/KeysPage";
+import { MonitorPage } from "@/pages/MonitorPage";
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/keys" element={<KeysPage />} />
+            <Route path="/monitor" element={<MonitorPage />} />
           </Routes>
         </main>
       </div>
