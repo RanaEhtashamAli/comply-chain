@@ -608,3 +608,60 @@ def test_compliance_show_unconfigured_by_default(client):
     body = r.json()
     assert body[0]["section"] == "§314.4(b)"
     assert body[0]["configured"] is False
+
+
+# ---------------------------------------------------------------------------
+# admin: rules/validate, benchmark
+# ---------------------------------------------------------------------------
+
+_VALID_RULES_YAML = """
+rules:
+  - name: high_value
+    condition: "amount > 10000"
+    risk_weight: 20
+    flag: HIGH_VALUE
+    severity: HIGH
+"""
+
+_INVALID_SEVERITY_YAML = """
+rules:
+  - name: bad_severity
+    condition: "amount > 10000"
+    severity: NOT_A_SEVERITY
+"""
+
+
+def test_validate_rules_valid(client):
+    r = client.post("/rules/validate", json={"yaml_content": _VALID_RULES_YAML})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True
+    assert body["rule_count"] == 1
+    assert body["errors"] == []
+
+
+def test_validate_rules_invalid_severity(client):
+    r = client.post("/rules/validate", json={"yaml_content": _INVALID_SEVERITY_YAML})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is False
+    assert any("severity" in e.lower() for e in body["errors"])
+
+
+def test_validate_rules_unparseable_yaml_400(client):
+    r = client.post("/rules/validate", json={"yaml_content": "{"})
+    assert r.status_code == 400
+
+
+def test_benchmark_default(client):
+    r = client.post("/benchmark", json={})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["key_generation"]["samples"] > 0
+    assert body["signing"]["samples"] == 100
+
+
+def test_benchmark_capped_at_500(client):
+    r = client.post("/benchmark", json={"samples": 100000})
+    assert r.status_code == 200
+    assert r.json()["signing"]["samples"] == 500

@@ -63,5 +63,73 @@ try:
             for section, description, module in _GLBA_SECTIONS
         ]
 
+    # -----------------------------------------------------------------
+    # rules/validate
+    # -----------------------------------------------------------------
+
+    class ValidateRulesRequest(BaseModel):
+        yaml_content: str
+
+    @router.post("/rules/validate")
+    def validate_rules(req: ValidateRulesRequest):
+        import tempfile
+        from pathlib import Path
+        from ...rules import RuleEngine
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(req.yaml_content)
+            tmp_path = Path(f.name)
+        try:
+            try:
+                engine = RuleEngine.load(tmp_path)
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Could not parse YAML: {exc}")
+            errors = engine.validate()
+            return {"valid": not errors, "rule_count": len(engine._rules), "errors": errors}
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    # -----------------------------------------------------------------
+    # benchmark
+    # -----------------------------------------------------------------
+
+    class BenchmarkRequest(BaseModel):
+        samples: int = 100
+        algorithm: str = "dilithium3"
+
+    _MAX_BENCHMARK_SAMPLES = 500
+
+    @router.post("/benchmark")
+    def run_benchmark(req: BenchmarkRequest):
+        import time
+        from ...crypto_engine import QuantumSafeSigner
+
+        samples = min(max(req.samples, 1), _MAX_BENCHMARK_SAMPLES)
+        signer = QuantumSafeSigner(algorithm=req.algorithm.upper())
+        test_data = b"benchmark_test_data" * 1000
+
+        key_gen_times = []
+        for _ in range(min(samples, 10)):
+            start = time.time()
+            signer.generate_keys()
+            key_gen_times.append(time.time() - start)
+
+        sign_times = []
+        for _ in range(samples):
+            start = time.time()
+            signer.sign(test_data)
+            sign_times.append(time.time() - start)
+
+        return {
+            "key_generation": {
+                "avg_ms": (sum(key_gen_times) / len(key_gen_times)) * 1000,
+                "samples": len(key_gen_times),
+            },
+            "signing": {
+                "avg_ms": (sum(sign_times) / len(sign_times)) * 1000,
+                "samples": len(sign_times),
+            },
+        }
+
 except ImportError:
     pass
