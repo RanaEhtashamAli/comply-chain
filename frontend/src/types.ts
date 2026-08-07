@@ -59,3 +59,6 @@ export interface RotationManifest {
   action: string;
   [key: string]: unknown;
 }
+
+export type SarFormat = "pdf" | "xml" | "json";
+export type SarFilingType = "INITIAL" | "CORRECT" | "JOINT";
