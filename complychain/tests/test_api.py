@@ -422,3 +422,58 @@ def test_generate_sar_invalid_format_400(client):
 def test_generate_sar_missing_scan_result_422(client):
     r = client.post("/generate-sar", json={"tx_data": _SAMPLE_TX_DATA})
     assert r.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# audit/report and audit/evidence endpoints
+# ---------------------------------------------------------------------------
+
+def test_audit_report_daily(client):
+    r = client.get("/audit/report", params={"report_type": "daily"})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content[:4] == b"%PDF"
+
+
+def test_audit_report_monthly(client):
+    r = client.get("/audit/report", params={"report_type": "monthly"})
+    assert r.status_code == 200
+    assert r.content[:4] == b"%PDF"
+
+
+def test_audit_report_incident(client):
+    r = client.get("/audit/report", params={"report_type": "incident"})
+    assert r.status_code == 200
+    assert r.content[:4] == b"%PDF"
+
+
+def test_audit_report_missing_param_422(client):
+    r = client.get("/audit/report")
+    assert r.status_code == 422
+
+
+def test_audit_evidence_default(client):
+    r = client.post("/audit/evidence", json={})
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/zip"
+
+    import io
+    import zipfile
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = zf.namelist()
+    assert "manifest.json" in names
+    assert "README.txt" in names
+    assert any(n.startswith("assessments/") for n in names)
+
+
+def test_audit_evidence_specific_regulations(client):
+    r = client.post("/audit/evidence", json={"regulations": ["glba"], "sign": False})
+    assert r.status_code == 200
+    import io
+    import zipfile
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = zf.namelist()
+    assert "assessments/glba.json" in names
+    manifest = zf.read("manifest.json")
+    import json as _json
+    assert _json.loads(manifest)["signature"] is None
