@@ -550,6 +550,20 @@ def test_verify_with_no_key_yet_returns_404(signing_client):
 Run: `.venv/bin/python -m pytest complychain/tests/test_api.py -k "sign or verify" -v`
 Expected: FAIL with 404 (route doesn't exist yet).
 
+- [ ] **Step 2b: Add the `python-multipart` dependency**
+
+FastAPI's `UploadFile`/`Form` require `python-multipart`, not currently a dependency. Add it to `pyproject.toml`'s `api` extra:
+
+```toml
+api = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.29.0",
+    "python-multipart>=0.0.9",
+]
+```
+
+Install it locally: `uv pip install python-multipart --python .venv/bin/python`. Without this, every test in `test_api.py` fails collection with `RuntimeError: Form data requires "python-multipart" to be installed` (it breaks the whole file's collection, not just the sign/verify tests, since they all share one module).
+
 - [ ] **Step 3: Create `complychain/api/routes/sign.py`**
 
 ```python

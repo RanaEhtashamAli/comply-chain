@@ -22,6 +22,7 @@ try:
     from .routes.scan import router as scan_router
     from .routes.regulations import router as regulations_router
     from .routes.audit import router as audit_router
+    from .routes.sign import router as sign_router
 
     def create_app() -> FastAPI:
         app = FastAPI(
@@ -59,6 +60,7 @@ try:
         app.include_router(scan_router)
         app.include_router(regulations_router)
         app.include_router(audit_router)
+        app.include_router(sign_router)
 
         return app
 

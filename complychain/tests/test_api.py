@@ -194,3 +194,58 @@ def test_scan_request_missing_tx_data_422(client):
 def test_assess_request_defaults(client):
     r = client.post("/regulations/assess", json={"name": "My Org"})
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Sign / Verify endpoints
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def signing_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("COMPLYCHAIN_KEY_DIR", str(tmp_path / "keys"))
+    app = create_app()
+    return TestClient(app)
+
+
+def test_sign_returns_signature_bytes(signing_client):
+    r = signing_client.post("/sign", files={"file": ("doc.txt", b"hello world")})
+    assert r.status_code == 200
+    assert len(r.content) > 0
+    assert r.headers["content-disposition"] == 'attachment; filename="doc.txt.sig"'
+
+
+def test_sign_then_verify_round_trip(signing_client):
+    sign_r = signing_client.post("/sign", files={"file": ("doc.txt", b"hello world")})
+    verify_r = signing_client.post(
+        "/verify",
+        files={
+            "file": ("doc.txt", b"hello world"),
+            "signature": ("doc.txt.sig", sign_r.content),
+        },
+    )
+    assert verify_r.status_code == 200
+    assert verify_r.json()["valid"] is True
+
+
+def test_verify_tampered_content_is_invalid_not_error(signing_client):
+    sign_r = signing_client.post("/sign", files={"file": ("doc.txt", b"hello world")})
+    verify_r = signing_client.post(
+        "/verify",
+        files={
+            "file": ("doc.txt", b"tampered content"),
+            "signature": ("doc.txt.sig", sign_r.content),
+        },
+    )
+    assert verify_r.status_code == 200
+    assert verify_r.json()["valid"] is False
+
+
+def test_verify_with_no_key_yet_returns_404(signing_client):
+    r = signing_client.post(
+        "/verify",
+        files={
+            "file": ("doc.txt", b"hello"),
+            "signature": ("doc.txt.sig", b"fake"),
+        },
+    )
+    assert r.status_code == 404
