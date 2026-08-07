@@ -917,13 +917,37 @@ This file's bytes are signed and then verified through the UI.
 
 ```ts
 import { readFileSync, writeFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import os from "node:os";
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { API_URL, apiHeaders, seedApiKey } from "../helpers/auth";
 import { captureDownload } from "../helpers/download";
 
 const TO_SIGN = path.join(__dirname, "../fixtures/to-sign.txt");
+
+interface SignedFixture {
+  filename: string;
+  bytes: number;
+  sigPath: string;
+}
+
+/**
+ * Signs the fixture file through the UI and writes the downloaded signature to
+ * a unique temp path. Shared by the three verification tests below.
+ */
+async function signFixture(page: Page): Promise<SignedFixture> {
+  await page.locator("input[type=file]").first().setInputFiles(TO_SIGN);
+
+  const { filename, body } = await captureDownload(page, async () => {
+    await page.getByRole("button", { name: "Sign and download signature" }).click();
+  });
+
+  const sigPath = path.join(os.tmpdir(), `e2e-${randomUUID()}.sig`);
+  writeFileSync(sigPath, body);
+
+  return { filename, bytes: body.byteLength, sigPath };
+}
 
 test.beforeEach(async ({ page }) => {
   await seedApiKey(page);
@@ -947,58 +971,40 @@ test("the public key link points at the API and resolves", async ({ page, reques
 
 test("a signed file verifies through the UI", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Sign a file" })).toBeVisible();
-  await page.locator("input[type=file]").first().setInputFiles(TO_SIGN);
 
-  const { filename, body } = await captureDownload(page, async () => {
-    await page.getByRole("button", { name: "Sign and download signature" }).click();
-  });
-  expect(filename).toBe("to-sign.txt.sig");
-  expect(body.byteLength).toBeGreaterThan(0);
-
-  const sigPath = path.join(os.tmpdir(), `e2e-${Date.now()}.sig`);
-  writeFileSync(sigPath, body);
+  const signed = await signFixture(page);
+  expect(signed.filename).toBe("to-sign.txt.sig");
+  expect(signed.bytes).toBeGreaterThan(0);
 
   await page.getByLabel("Original file").setInputFiles(TO_SIGN);
-  await page.getByLabel("Signature file").setInputFiles(sigPath);
+  await page.getByLabel("Signature file").setInputFiles(signed.sigPath);
   await page.getByRole("button", { name: "Verify" }).click();
 
   await expect(page.getByText("Valid signature")).toBeVisible();
 });
 
 test("a tampered file fails verification", async ({ page }) => {
-  await page.locator("input[type=file]").first().setInputFiles(TO_SIGN);
-  const { body } = await captureDownload(page, async () => {
-    await page.getByRole("button", { name: "Sign and download signature" }).click();
-  });
+  const signed = await signFixture(page);
 
-  const sigPath = path.join(os.tmpdir(), `e2e-tampered-${Date.now()}.sig`);
-  writeFileSync(sigPath, body);
-
-  const tamperedPath = path.join(os.tmpdir(), `e2e-tampered-${Date.now()}.txt`);
+  const tamperedPath = path.join(os.tmpdir(), `e2e-tampered-${randomUUID()}.txt`);
   writeFileSync(tamperedPath, readFileSync(TO_SIGN, "utf-8") + "\ntampered");
 
   await page.getByLabel("Original file").setInputFiles(tamperedPath);
-  await page.getByLabel("Signature file").setInputFiles(sigPath);
+  await page.getByLabel("Signature file").setInputFiles(signed.sigPath);
   await page.getByRole("button", { name: "Verify" }).click();
 
   await expect(page.getByText("Invalid signature")).toBeVisible();
 });
 
 test("verification accepts an explicitly supplied public key", async ({ page, request }) => {
-  await page.locator("input[type=file]").first().setInputFiles(TO_SIGN);
-  const { body } = await captureDownload(page, async () => {
-    await page.getByRole("button", { name: "Sign and download signature" }).click();
-  });
-
-  const sigPath = path.join(os.tmpdir(), `e2e-pk-${Date.now()}.sig`);
-  writeFileSync(sigPath, body);
+  const signed = await signFixture(page);
 
   const pem = await (await request.get(`${API_URL}/keys/public`, { headers: apiHeaders() })).text();
-  const pemPath = path.join(os.tmpdir(), `e2e-pk-${Date.now()}.pem`);
+  const pemPath = path.join(os.tmpdir(), `e2e-pk-${randomUUID()}.pem`);
   writeFileSync(pemPath, pem);
 
   await page.getByLabel("Original file").setInputFiles(TO_SIGN);
-  await page.getByLabel("Signature file").setInputFiles(sigPath);
+  await page.getByLabel("Signature file").setInputFiles(signed.sigPath);
   await page
     .getByLabel("Public key (optional — defaults to the institutional key)")
     .setInputFiles(pemPath);
@@ -1158,10 +1164,30 @@ test.afterEach(async ({ request }) => {
   }
 });
 
-async function createJob(page: Page, name: string) {
+interface MonitorJob {
+  job_id: string;
+  regulation_id: string;
+  cron: string;
+}
+
+/**
+ * Creates a job through the UI, registers it for cleanup, and returns the
+ * API's response payload. Registration happens as soon as the job exists, so
+ * afterEach removes it even if a later assertion in the test fails.
+ */
+async function createTrackedJob(page: Page, name: string): Promise<MonitorJob> {
+  const created = page.waitForResponse(
+    (r) => r.url().endsWith("/monitor") && r.request().method() === "POST" && r.ok()
+  );
+
   await page.getByLabel("Institution name").fill(name);
   await page.getByRole("button", { name: "Create monitoring job" }).click();
+
+  const job = (await (await created).json()) as MonitorJob;
+  createdJobIds.push(job.job_id);
+
   await expect(page.getByRole("cell", { name: "never" }).first()).toBeVisible();
+  return job;
 }
 
 test("the regulation select is populated and defaults to the first entry", async ({ page }) => {
@@ -1174,15 +1200,8 @@ test("the cron field defaults to 0 8 * * *", async ({ page }) => {
   await expect(page.getByLabel("Cron schedule")).toHaveValue("0 8 * * *");
 });
 
-test("creating a job adds a row with its schedule and empty run state", async ({ page, request }) => {
-  const name = uniqueName("Monitor Create");
-
-  const created = page.waitForResponse(
-    (r) => r.url().endsWith("/monitor") && r.request().method() === "POST" && r.ok()
-  );
-  await createJob(page, name);
-  const job = await (await created).json();
-  createdJobIds.push(job.job_id);
+test("creating a job adds a row with its schedule and empty run state", async ({ page }) => {
+  await createTrackedJob(page, uniqueName("Monitor Create"));
 
   const row = page.getByRole("row").filter({ hasText: "0 8 * * *" }).first();
   await expect(row).toContainText("glba");
@@ -1202,27 +1221,16 @@ test("an invalid cron expression surfaces the API error", async ({ page }) => {
 });
 
 test("a created job survives a reload", async ({ page }) => {
-  const created = page.waitForResponse(
-    (r) => r.url().endsWith("/monitor") && r.request().method() === "POST" && r.ok()
-  );
-  await createJob(page, uniqueName("Monitor Persist"));
-  const job = await (await created).json();
-  createdJobIds.push(job.job_id);
+  await createTrackedJob(page, uniqueName("Monitor Persist"));
 
   await page.reload();
   await expect(page.getByRole("row").filter({ hasText: "0 8 * * *" }).first()).toBeVisible();
 });
 
 test("stopping a job removes its row", async ({ page }) => {
-  const created = page.waitForResponse(
-    (r) => r.url().endsWith("/monitor") && r.request().method() === "POST" && r.ok()
-  );
-  await createJob(page, uniqueName("Monitor Stop"));
-  const job = await (await created).json();
-  // Registered for cleanup too: if the UI Stop below never runs because the
-  // test fails first, afterEach still removes the job. A second delete 404s
-  // harmlessly.
-  createdJobIds.push(job.job_id);
+  // createTrackedJob registers the job for cleanup, so afterEach still removes
+  // it if the UI Stop below never runs. A second delete 404s harmlessly.
+  await createTrackedJob(page, uniqueName("Monitor Stop"));
 
   const rowsBefore = await page.getByRole("row").count();
 
@@ -1249,12 +1257,7 @@ test("stopping an already-stopped job leaves the page functional", async ({ page
       : route.continue()
   );
 
-  const created = page.waitForResponse(
-    (r) => r.url().endsWith("/monitor") && r.request().method() === "POST" && r.ok()
-  );
-  await createJob(page, uniqueName("Monitor Double Stop"));
-  const job = await (await created).json();
-  createdJobIds.push(job.job_id);
+  await createTrackedJob(page, uniqueName("Monitor Double Stop"));
 
   await page
     .getByRole("row")
@@ -1848,3 +1851,6 @@ Three deviations from the spec, each deliberate:
 1. **Per-project `workers: 1` was dropped** — Playwright has no such option. Serial execution of destructive tests uses `test.describe.configure({ mode: "serial" })` instead (Tasks 7 and 10).
 2. **The empty-diff state is tested with route interception** (Task 3) because `/regulations/{id}/diff` is keyed on regulation, not institution, so a shared deployed store cannot be made to return 404 through UI input alone.
 3. **The SAR matrix is 5 tests, not 9** — three formats with `INITIAL`, plus `CORRECT` and `JOINT` in XML. Every filing type and every format is covered without generating nine PDFs on four browser projects.
+4. **Two shared setup blocks are extracted into spec-local helpers** — `signFixture()` in Task 6 and `createTrackedJob()` in Task 8. The first draft repeated each block verbatim across three tests; extracting them removes ~30 duplicated lines. `createTrackedJob` also registers every job for cleanup at the moment it is created, which closes a leak in the first draft where a test failing between creation and the UI Stop would have left a live cron job on the deployed instance.
+
+**Execution decisions (2026-08-08):** work proceeds directly on `main` with the user's explicit consent — no worktree. `E2E_API_KEY` is stored at `~/.complychain-e2e-key` (mode 600, outside the repo); every command reads it with `E2E_API_KEY=$(cat ~/.complychain-e2e-key)` so the literal value never enters a dispatch prompt, a spec, or a commit.
