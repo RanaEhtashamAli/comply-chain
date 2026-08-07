@@ -36,3 +36,26 @@ export interface AuditChain {
   entries: Array<Record<string, unknown>>;
   error?: string;
 }
+
+export interface KeyCheckResult {
+  ok: boolean;
+  findings: string[];
+  key_algorithm: string | null;
+  key_age_days: number | null;
+  round_trip_passed: boolean | null;
+}
+
+export interface KeyReplaceResult {
+  ok: boolean;
+  algorithm: string;
+  public_key: string;
+}
+
+export interface RotationManifest {
+  rotated_at: string;
+  new_algorithm: string;
+  old_algorithm: string;
+  chain_of_custody_signed: boolean;
+  action: string;
+  [key: string]: unknown;
+}

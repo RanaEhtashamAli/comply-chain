@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { AssessmentPage } from "@/pages/AssessmentPage";
 import { ScannerPage } from "@/pages/ScannerPage";
 import { AuditPage } from "@/pages/AuditPage";
+import { KeysPage } from "@/pages/KeysPage";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
             <Route path="/assessment" element={<AssessmentPage />} />
             <Route path="/scanner" element={<ScannerPage />} />
             <Route path="/audit" element={<AuditPage />} />
+            <Route path="/keys" element={<KeysPage />} />
           </Routes>
         </main>
       </div>
