@@ -665,3 +665,51 @@ def test_benchmark_capped_at_500(client):
     r = client.post("/benchmark", json={"samples": 100000})
     assert r.status_code == 200
     assert r.json()["signing"]["samples"] == 500
+
+
+# ---------------------------------------------------------------------------
+# admin: train-model
+# ---------------------------------------------------------------------------
+
+import io
+import json as _json_mod
+
+_TRAINING_DATA = [
+    {"amount": 100, "timestamp": 1700000000, "latitude": 0, "longitude": 0, "account_age_days": 100},
+    {"amount": 200, "timestamp": 1700003600, "latitude": 0, "longitude": 0, "account_age_days": 100},
+    {"amount": 150, "timestamp": 1700007200, "latitude": 0, "longitude": 0, "account_age_days": 100},
+    {"amount": 175, "timestamp": 1700010800, "latitude": 0, "longitude": 0, "account_age_days": 100},
+]
+
+
+def test_train_model_returns_metrics_and_isolated_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    training_file = io.BytesIO(_json_mod.dumps(_TRAINING_DATA).encode("utf-8"))
+    app = create_app()
+    c = TestClient(app)
+    r = c.post("/train-model", files={"training_data": ("train.json", training_file, "application/json")})
+    assert r.status_code == 200
+    body = r.json()
+    assert "training_samples" in body["metrics"]
+    assert body["model_path"].startswith("models/trained_")
+
+
+def test_train_model_never_touches_default_model_path(tmp_path, monkeypatch):
+    """The core regression this task is built around: training via the API
+    must never write to models/isolation_forest.pkl — the path GLBAScanner
+    actually loads for live /scan anomaly detection."""
+    monkeypatch.chdir(tmp_path)
+    training_file = io.BytesIO(_json_mod.dumps(_TRAINING_DATA).encode("utf-8"))
+    app = create_app()
+    c = TestClient(app)
+    r = c.post("/train-model", files={"training_data": ("train.json", training_file, "application/json")})
+    assert r.status_code == 200
+
+    default_model_file = tmp_path / "models" / "isolation_forest.pkl"
+    assert not default_model_file.exists()
+
+
+def test_train_model_invalid_json_400(client):
+    bad_file = io.BytesIO(b"not json")
+    r = client.post("/train-model", files={"training_data": ("train.json", bad_file, "application/json")})
+    assert r.status_code == 400

@@ -131,5 +131,42 @@ try:
             },
         }
 
+    # -----------------------------------------------------------------
+    # train-model
+    # -----------------------------------------------------------------
+
+    @router.post("/train-model")
+    async def train_model(
+        training_data: UploadFile = File(...),
+        validation_data: UploadFile = File(None),
+    ):
+        import json
+        from datetime import datetime, timezone
+        from pathlib import Path
+        from ...detection.ml_engine import MLEngine
+
+        try:
+            train_json = json.loads(await training_data.read())
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid training_data JSON: {exc}")
+
+        val_json = None
+        if validation_data is not None:
+            try:
+                val_json = json.loads(await validation_data.read())
+            except Exception as exc:
+                raise HTTPException(status_code=400, detail=f"Invalid validation_data JSON: {exc}")
+
+        ts = datetime.now(tz=timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+        model_path = Path("models") / f"trained_{ts}"
+
+        try:
+            engine = MLEngine(model_path=model_path)
+            metrics = engine.train(train_json, val_json)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Training failed: {exc}")
+
+        return {"metrics": metrics, "model_path": str(model_path)}
+
 except ImportError:
     pass
