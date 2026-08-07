@@ -83,3 +83,34 @@ export interface CreateMonitorRequest {
   employee_count: number;
   hipaa_covered_entity: boolean;
 }
+
+export interface SanctionsStatus {
+  sanctions_cache_status: string;
+  ofac_configured: boolean;
+  unsc_configured: boolean;
+  uk_configured: boolean;
+  fincen_api_key_configured: boolean;
+}
+
+export interface ComplianceRow {
+  section: string;
+  description: string;
+  module: string;
+  configured: boolean;
+}
+
+export interface ValidateRulesResult {
+  valid: boolean;
+  rule_count: number;
+  errors: string[];
+}
+
+export interface BenchmarkResult {
+  key_generation: { avg_ms: number; samples: number };
+  signing: { avg_ms: number; samples: number };
+}
+
+export interface TrainModelResult {
+  metrics: Record<string, number>;
+  model_path: string;
+}

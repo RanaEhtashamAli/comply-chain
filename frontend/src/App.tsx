@@ -6,6 +6,7 @@ import { ScannerPage } from "@/pages/ScannerPage";
 import { AuditPage } from "@/pages/AuditPage";
 import { KeysPage } from "@/pages/KeysPage";
 import { MonitorPage } from "@/pages/MonitorPage";
+import { AdminPage } from "@/pages/AdminPage";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/monitor" element={<MonitorPage />} />
+            <Route path="/admin" element={<AdminPage />} />
           </Routes>
         </main>
       </div>
