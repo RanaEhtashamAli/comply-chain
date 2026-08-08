@@ -149,10 +149,16 @@ export function AuditPage() {
   const isValid =
     status && Object.entries(status).some(([k, v]) => /valid|ok|healthy/i.test(k) && v === true);
 
+  // "Not started yet" and "tampered with" are very different things for an
+  // audit log, and a fresh deployment showed the alarming one. An empty chain
+  // is reported as its own neutral state.
+  const totalEntries = typeof status?.total_entries === "number" ? status.total_entries : null;
+  const isUninitialised = !isValid && totalEntries === 0;
+
   const columns = entries && entries.length > 0 ? Object.keys(entries[0]) : [];
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <h1 className="text-2xl font-semibold text-slate-900 mb-4">Audit</h1>
       {loading && <p className="text-slate-500 text-sm">Loading…</p>}
       <Card className="mb-6">
@@ -162,11 +168,25 @@ export function AuditPage() {
           <>
             <span
               className={`inline-block text-xs font-semibold px-2 py-1 rounded mb-2 ${
-                isValid ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+                isValid
+                  ? "bg-green-100 text-green-800"
+                  : isUninitialised
+                    ? "bg-slate-100 text-slate-700"
+                    : "bg-red-100 text-red-800"
               }`}
             >
-              {isValid ? "Chain valid" : "Chain broken or unverifiable"}
+              {isValid
+                ? "Chain valid"
+                : isUninitialised
+                  ? "No audit chain yet"
+                  : "Chain broken or unverifiable"}
             </span>
+            {isUninitialised && (
+              <p className="text-sm text-slate-600 mb-2">
+                Nothing has been recorded yet. The chain is created the first time a
+                transaction is scanned.
+              </p>
+            )}
             <pre className="bg-slate-50 p-3 rounded text-xs overflow-x-auto">
               {JSON.stringify(status, null, 2)}
             </pre>

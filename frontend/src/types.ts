@@ -106,6 +106,12 @@ export interface ValidateRulesResult {
 }
 
 export interface BenchmarkResult {
+  /** What the caller asked for. */
+  requested_algorithm?: string;
+  /** What actually ran — QuantumSafeSigner falls back to RSA-4096 without liboqs. */
+  effective_algorithm?: string;
+  /** True when a post-quantum algorithm was requested but RSA-4096 ran instead. */
+  fallback_active?: boolean;
   key_generation: { avg_ms: number; samples: number };
   signing: { avg_ms: number; samples: number };
 }

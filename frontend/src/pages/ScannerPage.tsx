@@ -86,7 +86,7 @@ export function ScannerPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-3xl">
       <h1 className="text-2xl font-semibold text-slate-900 mb-4">Scanner</h1>
       <Card className="mb-6">
         <form onSubmit={handleSubmit} className="space-y-3">

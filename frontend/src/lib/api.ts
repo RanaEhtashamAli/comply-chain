@@ -34,7 +34,22 @@ export function registerUnauthorizedHandler(handler: () => void): void {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    // Requests made with responseType:"blob" (sign, SAR, report, evidence)
+    // also receive their ERROR bodies as a Blob, so `data.detail` is always
+    // undefined and every caller silently fell back to a generic message.
+    // Re-read the blob as text and parse it here, once, so the server's real
+    // detail reaches getApiErrorMessage below.
+    const data = error.response?.data;
+    if (data instanceof Blob) {
+      try {
+        error.response.data = JSON.parse(await data.text());
+      } catch {
+        // Not JSON (an HTML error page, say) — leave it and let the caller's
+        // fallback message apply.
+      }
+    }
+
     if (error.response?.status === 401 || error.response?.status === 403) {
       clearStoredApiKey();
       onUnauthorized?.();

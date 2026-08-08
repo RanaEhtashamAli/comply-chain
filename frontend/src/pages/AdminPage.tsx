@@ -142,6 +142,18 @@ function BenchmarkCard() {
         </Button>
       </div>
       {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+      {result?.fallback_active && (
+        <p className="text-sm text-amber-700 mt-2">
+          {result.requested_algorithm} is unavailable on this deployment (liboqs is not
+          installed) — these timings are for {result.effective_algorithm}, not a
+          post-quantum algorithm.
+        </p>
+      )}
+      {result && !result.fallback_active && result.effective_algorithm && (
+        <p className="text-xs text-slate-500 mt-2">
+          Measured with {result.effective_algorithm}.
+        </p>
+      )}
       {result && (
         <table className="mt-3 text-sm">
           <thead>
@@ -189,7 +201,7 @@ function ComplianceChecklistCard() {
       </p>
       {error && <p className="text-sm text-red-600">{error}</p>}
       {rows.length > 0 && (
-        <table className="min-w-full text-sm">
+        <table className="min-w-full text-sm block overflow-x-auto sm:table">
           <thead>
             <tr className="border-b border-slate-200">
               <th className="text-left py-2 pr-4 font-medium text-slate-700">Section</th>
@@ -283,7 +295,7 @@ function TrainModelCard() {
 
 export function AdminPage() {
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-3xl">
       <h1 className="text-2xl font-semibold text-slate-900 mb-4">Admin</h1>
       <SanctionsStatusCard />
       <RuleValidatorCard />

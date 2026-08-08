@@ -158,3 +158,5 @@ test_keys/
 
 WINDOWS_COMMANDS.md
 WINDOWS_RUNNING_GUIDE.md
+# Playwright MCP browser-session scratch
+.playwright-mcp/

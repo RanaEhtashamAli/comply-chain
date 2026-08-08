@@ -72,10 +72,10 @@ export function MonitorPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       <h1 className="text-2xl font-semibold text-slate-900 mb-4">Monitoring</h1>
       <Card className="mb-6">
-        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="text-sm text-slate-700 space-y-1">
             <span>Regulation</span>
             <select
@@ -131,7 +131,7 @@ export function MonitorPage() {
               onChange={(e) => setForm({ ...form, employee_count: Number(e.target.value) })}
             />
           </label>
-          <div className="col-span-2 flex gap-6">
+          <div className="sm:col-span-2 flex flex-wrap gap-4 sm:gap-6">
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
@@ -157,8 +157,8 @@ export function MonitorPage() {
               HIPAA covered entity
             </label>
           </div>
-          {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
-          <div className="col-span-2">
+          {error && <p className="sm:col-span-2 text-sm text-red-600">{error}</p>}
+          <div className="sm:col-span-2">
             <Button type="submit" disabled={loading}>
               {loading ? "Creating…" : "Create monitoring job"}
             </Button>
@@ -169,7 +169,7 @@ export function MonitorPage() {
         <h2 className="font-semibold text-slate-900 mb-2">Scheduled jobs</h2>
         {jobs.length === 0 && <p className="text-slate-500 text-sm">No jobs scheduled.</p>}
         {jobs.length > 0 && (
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm block overflow-x-auto sm:table">
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="text-left py-2 pr-4 font-medium text-slate-700">Regulation</th>

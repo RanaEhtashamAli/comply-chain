@@ -172,7 +172,7 @@ function DangerZone({ onChanged }: { onChanged: () => void }) {
   return (
     <Card className="mb-6 border-red-200">
       <h2 className="font-semibold text-red-700 mb-3">Danger zone</h2>
-      <div className="flex gap-3 mb-3">
+      <div className="flex flex-wrap gap-3 mb-3">
         <Button variant="secondary" onClick={rotate} disabled={busy}>
           Rotate key
         </Button>
@@ -217,15 +217,24 @@ export function KeysPage() {
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
-    try {
-      const [statusRes, historyRes] = await Promise.all([
-        api.get<KeyCheckResult>("/key-rotation/check"),
-        api.get<RotationManifest[]>("/key-rotation/history"),
-      ]);
-      setStatus(statusRes.data);
-      setHistory(historyRes.data);
-    } catch (err: unknown) {
-      setError(getApiErrorMessage(err, "Could not load key status"));
+    setError(null);
+    // allSettled, not all: these are independent reads and one failing must
+    // not discard the other's result. When /key-rotation/check errored, the
+    // rotation history vanished from the page too — even though its own
+    // request had returned 200 with data.
+    const [statusRes, historyRes] = await Promise.allSettled([
+      api.get<KeyCheckResult>("/key-rotation/check"),
+      api.get<RotationManifest[]>("/key-rotation/history"),
+    ]);
+
+    if (statusRes.status === "fulfilled") {
+      setStatus(statusRes.value.data);
+    } else {
+      setError(getApiErrorMessage(statusRes.reason, "Could not load key status"));
+    }
+
+    if (historyRes.status === "fulfilled") {
+      setHistory(historyRes.value.data);
     }
   }
 
@@ -234,7 +243,7 @@ export function KeysPage() {
   }, []);
 
   return (
-    <div className="p-6 max-w-3xl">
+    <div className="p-4 sm:p-6 max-w-3xl">
       <h1 className="text-2xl font-semibold text-slate-900 mb-4">Keys</h1>
 
       <Card className="mb-6">
@@ -271,7 +280,7 @@ export function KeysPage() {
         <h2 className="font-semibold text-slate-900 mb-2">Rotation history</h2>
         {history && history.length === 0 && <p className="text-slate-500 text-sm">No history yet.</p>}
         {history && history.length > 0 && (
-          <table className="min-w-full text-sm">
+          <table className="min-w-full text-sm block overflow-x-auto sm:table">
             <thead>
               <tr className="border-b border-slate-200">
                 <th className="text-left py-2 pr-4 font-medium text-slate-700">Rotated at</th>

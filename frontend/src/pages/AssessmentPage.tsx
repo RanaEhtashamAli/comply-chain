@@ -83,7 +83,14 @@ function ReportCard({ report }: { report: RegulationReport }) {
         </span>
       </div>
       <div className="mt-2 text-sm text-slate-700 space-y-1">
-        <p>Risk score: {report.risk_score}</p>
+        {/* Fixed precision and an explicit scale: the raw values arrive as
+            0.552, 1, 0.9167… while the Scanner reports risk on a 0–100 scale,
+            so an unlabelled bare float was ambiguous as well as untidy. */}
+        <p>
+          Risk score:{" "}
+          {typeof report.risk_score === "number" ? report.risk_score.toFixed(2) : "—"}{" "}
+          <span className="text-xs text-slate-500">(0–1)</span>
+        </p>
         <p>Applicable: {report.applicable ? "Yes" : "No"}</p>
       </div>
       {report.recommendations?.length > 0 && (
@@ -173,10 +180,10 @@ export function AssessmentPage() {
   }
 
   return (
-    <div className="p-6 max-w-5xl">
+    <div className="p-4 sm:p-6 max-w-5xl">
       <h1 className="text-2xl font-semibold text-slate-900 mb-4">Assessment</h1>
       <Card className="mb-6">
-        <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <label className="text-sm text-slate-700 space-y-1">
             <span>Institution name</span>
             <Input
@@ -208,7 +215,7 @@ export function AssessmentPage() {
               onChange={(e) => setForm({ ...form, employee_count: Number(e.target.value) })}
             />
           </label>
-          <div className="col-span-2 flex gap-6">
+          <div className="sm:col-span-2 flex flex-wrap gap-4 sm:gap-6">
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
@@ -234,8 +241,8 @@ export function AssessmentPage() {
               HIPAA covered entity
             </label>
           </div>
-          {error && <p className="col-span-2 text-sm text-red-600">{error}</p>}
-          <div className="col-span-2">
+          {error && <p className="sm:col-span-2 text-sm text-red-600">{error}</p>}
+          <div className="sm:col-span-2">
             <Button type="submit" disabled={loading}>
               {loading ? "Assessing…" : "Run assessment"}
             </Button>
@@ -243,7 +250,7 @@ export function AssessmentPage() {
         </form>
       </Card>
       {results && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {Object.values(results).map((report) => (
             <ReportCard key={report.regulation_id} report={report} />
           ))}

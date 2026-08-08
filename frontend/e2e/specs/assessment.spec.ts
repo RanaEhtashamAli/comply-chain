@@ -98,17 +98,10 @@ test("Show controls reveals control titles and statuses", async ({ page }) => {
 });
 
 test("expanding a card loads 30-day history and a diff", async ({ page }) => {
-  // Product bug (docs/superpowers/e2e-findings.md #2): POST /regulations/assess
-  // never calls AssessmentStore.save() (complychain/api/routes/regulations.py) —
-  // only the CLI's `assess` command and the monitoring scheduler persist reports.
-  // GET .../history and .../diff read that same store, so they report "no prior
-  // assessment" even right after assessing the same regulation twice from this
-  // page. Reproduced deterministically (not a timing flake): confirmed by source
-  // inspection and by two consecutive local runs both failing identically on the
-  // "Diff vs. previous" assertion below. Left as written per the brief's triage
-  // rule — do not soften the assertion.
-  test.fail(true, "Assess-via-UI results are never persisted; diff never appears. See finding #2.");
-
+  // Regression guard for finding #2 (now fixed): POST /regulations/assess did
+  // not call AssessmentStore.save(), so history and diff stayed empty no matter
+  // how many times you assessed from this page. If persistence is ever removed
+  // again, the two assertions at the end of this test go red.
   await runAssessment(page, { name: "E2E History Institution" });
 
   // Assess twice so the store definitely holds two entries for the diff.
