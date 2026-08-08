@@ -33,8 +33,20 @@ Not fixed, and why:
   testing, so there is nothing yet to fix with confidence. It needs
   investigation first.
 
-**The deployment still runs the old code.** These commits are local; nothing has
-been pushed, so H1 is still live on `complychain.dev` until you deploy.
+**Deployed and re-verified.** After deployment:
+
+- `/key-rotation/check` returns `ok: true` with a keystore present — the exact
+  state that used to produce a 500 (H1 confirmed fixed in production).
+- `/regulations/assess` returns 200. It had also been 500ing, because
+  `pci_dss.py:106`, `soc2.py:163` and `hipaa.py:114` all call
+  `KeyVerifier().verify()` — so H1 broke the Assessment page as well as the Keys
+  page. The original report understated its blast radius.
+- The audit chain is live and verifying: 46 entries, `ok: true` (H2/H4 confirmed).
+- **Playwright: 166 passed, 0 failed, 0 flaky** across chromium, firefox, webkit,
+  mobile and the destructive project. Python: 920 passed.
+
+One new finding (M9) surfaced during that re-verification, and one durability
+observation is recorded at the end.
 
 ---
 
@@ -319,6 +331,40 @@ confirming whether a scan can legitimately report "verified" while the cache is 
 data, since sanctions screening accuracy is the point of the feature.
 
 ---
+
+## Found after the fixes (not yet fixed)
+
+### M9 — `sign=true` can silently produce an unsigned evidence package
+
+`EvidencePackage._sign_manifest()` (`complychain/export/evidence.py:152`) wraps its
+whole body in `try/except Exception: pass` and returns `None` on any failure —
+including the ordinary case where no institutional key exists yet. The export then
+succeeds, the manifest carries `"signature": null`, and nothing tells the caller
+that the signing they explicitly asked for did not happen. The UI's "Sign manifest"
+box stays checked throughout.
+
+Observed directly: with no key on the deployment, exporting with signing enabled
+produced a manifest with a null signature and no error. Once a key existed, signing
+worked.
+
+For a package whose purpose is to be handed to an auditor, "unsigned but looks
+signed" is the wrong failure mode. It should either fail loudly, or report
+`"signed": false` with the reason so the UI can say so.
+
+### Durability observation
+
+State does not appear to be uniformly persistent. The audit chain survives
+comfortably (46 entries, stable across repeated reads and multi-minute gaps), but
+the institutional key and rotation history created by one test run had vanished by
+the time I checked minutes later — while a key generated afterwards persisted fine
+for 120s+. That pattern is consistent with a container restart wiping paths that
+are not on the mounted volume, with the audit directory being on it and the key
+directory not.
+
+I could not inspect the Railway volume configuration, so this is an observation
+rather than a diagnosis. Worth confirming the volume covers the key directory and
+the assessment store, not just the audit directory — a signing key that disappears
+on restart takes the verifiability of every signature with it.
 
 ## What works well
 
