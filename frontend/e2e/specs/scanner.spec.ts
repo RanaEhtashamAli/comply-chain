@@ -105,16 +105,29 @@ for (const filingType of ["CORRECT", "JOINT"] as const) {
   });
 }
 
-test("a SAR failure surfaces an error message", async ({ page }) => {
+test("a SAR failure surfaces the server's error message", async ({ page }) => {
+  // Product bug — see docs/superpowers/e2e-findings.md finding #3.
+  // handleGenerateSar() calls api.post(..., { responseType: "blob" }), so on
+  // a non-2xx response axios stores the error body as a Blob on
+  // err.response.data. getApiErrorMessage() (frontend/src/lib/api.ts) reads
+  // err.response?.data?.detail, which is always undefined for a Blob, so it
+  // always renders the generic "SAR generation failed" fallback instead of
+  // the server's actual detail message. Verified visually: the page shows
+  // literally "SAR generation failed", never the mocked detail below.
+  test.fail();
   await scan(page);
+  // The mocked detail string must NOT overlap the frontend's own fallback.
+  // ScannerPage.tsx calls getApiErrorMessage(err, "SAR generation failed"), so
+  // asserting on "SAR generation failed" would pass even if detail extraction
+  // broke entirely and the generic fallback were rendered instead.
   await page.route("**/generate-sar", (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",
-      body: JSON.stringify({ detail: "SAR generation failed: boom" }),
+      body: JSON.stringify({ detail: "boom: acct-e2e-sender flagged" }),
     })
   );
 
   await page.getByRole("button", { name: "Generate SAR" }).click();
-  await expect(page.getByText(/SAR generation failed/)).toBeVisible();
+  await expect(page.getByText("boom: acct-e2e-sender flagged")).toBeVisible();
 });

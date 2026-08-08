@@ -749,18 +749,22 @@ for (const filingType of ["CORRECT", "JOINT"] as const) {
   });
 }
 
-test("a SAR failure surfaces an error message", async ({ page }) => {
+test("a SAR failure surfaces the server's error message", async ({ page }) => {
   await scan(page);
+  // The mocked detail string must NOT overlap the frontend's own fallback.
+  // ScannerPage.tsx calls getApiErrorMessage(err, "SAR generation failed"), so
+  // asserting on "SAR generation failed" would pass even if detail extraction
+  // broke entirely and the generic fallback were rendered instead.
   await page.route("**/generate-sar", (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",
-      body: JSON.stringify({ detail: "SAR generation failed: boom" }),
+      body: JSON.stringify({ detail: "boom: acct-e2e-sender flagged" }),
     })
   );
 
   await page.getByRole("button", { name: "Generate SAR" }).click();
-  await expect(page.getByText(/SAR generation failed/)).toBeVisible();
+  await expect(page.getByText("boom: acct-e2e-sender flagged")).toBeVisible();
 });
 ```
 
