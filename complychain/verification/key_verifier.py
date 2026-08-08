@@ -10,7 +10,7 @@ Checks:
 import json
 import os
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -73,13 +73,21 @@ class KeyVerifier:
                 key_algorithm = ks.get("algorithm")
                 created_at = ks.get("created_at")
                 if created_at:
-                    age = (datetime.utcnow() - datetime.fromisoformat(created_at)).days
+                    created = datetime.fromisoformat(created_at)
+                    # keystore.json may hold either a naive or a timezone-aware
+                    # timestamp depending on which writer produced it
+                    # (KeyRotationManager writes UTC-aware). Normalise both
+                    # sides to aware UTC before subtracting — mixing the two
+                    # raises TypeError.
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    age = (datetime.now(tz=timezone.utc) - created).days
                     key_age_days = age
                     if age > self._max_key_age_days:
                         findings.append(
                             f"Key is {age} days old — exceeds max {self._max_key_age_days} days. Rotate keys."
                         )
-            except (json.JSONDecodeError, KeyError, ValueError) as exc:
+            except (json.JSONDecodeError, KeyError, ValueError, TypeError) as exc:
                 findings.append(f"keystore.json is malformed: {exc}")
 
         round_trip_passed = False

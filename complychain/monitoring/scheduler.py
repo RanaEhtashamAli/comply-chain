@@ -63,11 +63,15 @@ class MonitoringScheduler:
             cron=cron,
             profile=profile,
         )
-        self._jobs[job_id] = job
-
+        # Hand the job to APScheduler BEFORE tracking it: an invalid cron
+        # raises here, and a job the scheduler rejected must never reach
+        # self._jobs — it would be persisted to disk on the next successful
+        # schedule() and shown in the UI as live despite never being able to
+        # fire.
         if self._scheduler is not None:
             self._add_apscheduler_job(job)
 
+        self._jobs[job_id] = job
         return job_id
 
     def unschedule(self, job_id: str) -> bool:

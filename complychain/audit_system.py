@@ -130,10 +130,14 @@ class GLBAAuditor:
         self.merkle_tree = SimpleMerkleTree(hashfunc=sha256)
         self.chain_hash = "0" * 64  # Genesis hash
 
-        # Resolve persistence directory
-        default_dir = Path(
-            os.environ.get('COMPLYCHAIN_AUDIT_DIR', '')
-        ) or Path.home() / '.complychain' / 'audit'
+        # Resolve persistence directory.
+        # NB: `Path(os.environ.get(..., ''))` is Path('.') — which is truthy —
+        # so an `or` fallback here never fired and the chain was written to the
+        # process's working directory, while AuditChainVerifier and
+        # GET /audit/chain both read ~/.complychain/audit. Writer and reader
+        # disagreed, so entries appeared to vanish. Resolve it explicitly.
+        _env_dir = os.environ.get('COMPLYCHAIN_AUDIT_DIR', '').strip()
+        default_dir = Path(_env_dir) if _env_dir else Path.home() / '.complychain' / 'audit'
         self.chain_dir = Path(chain_dir) if chain_dir else default_dir
         self.chain_file = self.chain_dir / 'audit_chain.json'
 

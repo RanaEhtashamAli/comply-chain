@@ -137,7 +137,7 @@ class ExplanationEngine:
             raw_weight = float(RISK_WEIGHTS.get(weight_key, 10)) if weight_key else 10.0
             total_raw += raw_weight
 
-            meta = _FLAG_META.get(flag, {})
+            meta = self._flag_meta(flag, fincen)
             evidence = self._extract_evidence(flag, tx_data, fincen)
 
             factors.append(ExplanationFactor(
@@ -157,6 +157,30 @@ class ExplanationEngine:
         # Sort descending by contribution
         factors.sort(key=lambda f: f.contribution, reverse=True)
         return factors
+
+    # A CTR (FinCEN Form 112) is a *currency* report: it is due on cash
+    # transactions over $10,000, not on wires or book transfers. The scanner
+    # already decides this correctly via fincen["ctr_required"], so the
+    # explanation must not instruct an officer to file one when the scanner
+    # said none is due — previously a $50,000 wire produced "ensure a CTR is
+    # filed" alongside "ctr_required: false" in the same payload.
+    _HIGH_VALUE_NON_CASH = {
+        "description": (
+            "Transaction amount exceeds $10,000, the threshold at which currency "
+            "transactions become reportable. No Currency Transaction Report is due "
+            "here, as this is not a cash transaction."
+        ),
+        "remediation": (
+            "Review under your enhanced due-diligence policy for large transfers. "
+            "No CTR filing is required for non-cash activity."
+        ),
+    }
+
+    def _flag_meta(self, flag: str, fincen: dict) -> Dict[str, str]:
+        """Flag copy, adjusted for context where static text would be wrong."""
+        if flag == "HIGH_VALUE_TRANSACTION" and not fincen.get("ctr_required", False):
+            return self._HIGH_VALUE_NON_CASH
+        return _FLAG_META.get(flag, {})
 
     def _extract_evidence(self, flag: str, tx_data: dict, fincen: dict) -> Dict[str, Any]:
         amount = tx_data.get("amount", 0)

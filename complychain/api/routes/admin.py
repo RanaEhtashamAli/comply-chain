@@ -108,6 +108,14 @@ try:
         signer = QuantumSafeSigner(algorithm=req.algorithm.upper())
         test_data = b"benchmark_test_data" * 1000
 
+        # QuantumSafeSigner silently drops to RSA-4096 when liboqs is missing.
+        # Reporting only the requested algorithm would attribute RSA timings to
+        # a post-quantum algorithm that never ran — the opposite of what a
+        # benchmark is for. Mirror the same normalisation __init__ uses.
+        _requested_norm = req.algorithm.upper().replace("-", "").replace("_", "")
+        _requested_pq = _requested_norm in {"DILITHIUM3", "DILITHIUM", "MLDSA65", "MLDSA"}
+        fallback_active = _requested_pq and signer.algorithm == "RSA-4096"
+
         key_gen_times = []
         for _ in range(min(samples, 10)):
             start = time.time()
@@ -121,6 +129,9 @@ try:
             sign_times.append(time.time() - start)
 
         return {
+            "requested_algorithm": req.algorithm,
+            "effective_algorithm": signer.algorithm,
+            "fallback_active": fallback_active,
             "key_generation": {
                 "avg_ms": (sum(key_gen_times) / len(key_gen_times)) * 1000,
                 "samples": len(key_gen_times),

@@ -12,11 +12,16 @@ Usage:
     complychain serve --port 8080
 """
 
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 try:
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    from starlette.middleware.base import BaseHTTPMiddleware
     from .auth import APIKeyMiddleware
     from .routes.health import router as health_router
     from .routes.scan import router as scan_router
@@ -27,6 +32,30 @@ try:
     from .routes.sar import router as sar_router
     from .routes.monitor import router as monitor_router
     from .routes.admin import router as admin_router
+
+    class ExceptionToJSONMiddleware(BaseHTTPMiddleware):
+        """
+        Turn unhandled exceptions into a JSON 500 from *inside* the CORS layer.
+
+        Starlette's built-in ServerErrorMiddleware sits outside CORSMiddleware,
+        so an unhandled exception returned a bare 500 carrying no
+        Access-Control-Allow-Origin header. The browser then surfaced it as a
+        CORS policy failure rather than a server error, which points debugging
+        at the wrong subsystem entirely. Handling it here keeps the response
+        inside CORS so the real status reaches the client.
+        """
+
+        async def dispatch(self, request, call_next):
+            try:
+                return await call_next(request)
+            except Exception:
+                logger.exception(
+                    "Unhandled error serving %s %s", request.method, request.url.path
+                )
+                return JSONResponse(
+                    status_code=500,
+                    content={"detail": "Internal server error."},
+                )
 
     def create_app() -> FastAPI:
         app = FastAPI(
@@ -45,6 +74,9 @@ try:
         # CORSMiddleware must be added last so it intercepts preflight
         # OPTIONS requests before APIKeyMiddleware can reject them.
         app.add_middleware(APIKeyMiddleware)
+        # Added after APIKeyMiddleware and before CORSMiddleware, so it wraps
+        # the auth layer and the routes while itself staying inside CORS.
+        app.add_middleware(ExceptionToJSONMiddleware)
 
         allowed_origins = [
             origin.strip()

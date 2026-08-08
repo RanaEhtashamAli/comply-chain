@@ -22,9 +22,13 @@ from typing import Any, Dict, List, Optional
 from .explainability import ExplanationEngine
 
 _FLAG_NARRATIVES: Dict[str, str] = {
+    # States the threshold as a fact without asserting a CTR is due for THIS
+    # transaction — CTRs cover currency (cash) movements, so a wire can exceed
+    # $10,000 without triggering one. The conditional "a CTR is required"
+    # sentence below is gated on fincen["ctr_required"] and carries that claim.
     "HIGH_VALUE_TRANSACTION": (
         "A {transaction_type} of ${amount:,.2f} was processed, exceeding the $10,000 "
-        "Currency Transaction Report (CTR) threshold established under 31 U.S.C. § 5313."
+        "threshold at which currency transactions become reportable under 31 U.S.C. § 5313."
     ),
     "STRUCTURING_SUSPECTED": (
         "{transaction_count} transaction(s) totalling ${amount:,.2f} were identified within "
@@ -93,7 +97,10 @@ class SARReport:
         root = ET.Element("EFilingBatchXML", {
             "xmlns": "FinCEN/BSAEFILING",
             "SeqNum": "1",
-            "TotalAmount": str(self.transaction_summary.get("amount", 0)),
+            # _extract_tx_summary keys this "Amount" (capitalised); the old
+            # lowercase lookup never matched, so the batch total in every
+            # filing was "0" regardless of the transaction.
+            "TotalAmount": str(self.transaction_summary.get("Amount", 0)),
         })
         filing = ET.SubElement(root, "FormData")
 
@@ -306,12 +313,24 @@ class SARGenerator:
         return " ".join(sentences)
 
     def _extract_subject(self, tx_data: dict) -> Dict[str, Any]:
+        # `sender`/`receiver` are the field names the scanner and the Scanner
+        # UI's own placeholder use, so accept them as aliases for
+        # originator/beneficiary. Without them every SAR generated from a
+        # normal scan had an entirely "Unknown" subject section — the part a
+        # BSA officer most needs, and the part that makes the filing usable.
+        def _first(*keys: str) -> Any:
+            for key in keys:
+                value = tx_data.get(key)
+                if value not in (None, ""):
+                    return value
+            return "Unknown"
+
         return {
-            "BeneficiaryName": tx_data.get("beneficiary", "Unknown"),
-            "OriginatorName": tx_data.get("originator", "Unknown"),
-            "AccountNumber": tx_data.get("account_number", "Unknown"),
-            "TaxIDNumber": tx_data.get("tax_id", "Unknown"),
-            "Address": tx_data.get("address", "Unknown"),
+            "BeneficiaryName": _first("beneficiary", "receiver"),
+            "OriginatorName": _first("originator", "sender"),
+            "AccountNumber": _first("account_number", "sender_account", "sender"),
+            "TaxIDNumber": _first("tax_id"),
+            "Address": _first("address"),
         }
 
     def _extract_tx_summary(self, tx_data: dict, scan_result: dict) -> Dict[str, Any]:

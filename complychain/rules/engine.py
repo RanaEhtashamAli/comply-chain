@@ -132,9 +132,29 @@ class RuleEngine:
             )
             return errors
 
+        # Validation vocabulary. This must track the transaction schema the
+        # scanner and the ML feature extractor actually accept — a six-field
+        # subset rejected legitimate rules written against documented fields
+        # such as is_cross_border, which the scanner reads and _extract_features
+        # turns into a model feature.
         dummy = {
-            "amount": 0.0, "transaction_type": "", "beneficiary": "",
-            "originator": "", "currency": "", "destination_country": "",
+            # Core
+            "amount": 0.0, "transaction_type": "", "currency": "",
+            "currency_type": "", "destination_country": "",
+            # Parties (both naming conventions in use across the codebase)
+            "beneficiary": "", "originator": "", "sender": "", "receiver": "",
+            # Temporal / geo
+            "timestamp": 0, "time_period_hours": 0,
+            "latitude": 0.0, "longitude": 0.0,
+            # Account history
+            "account_age_days": 0, "transaction_count": 0,
+            "avg_transaction_amount": 0.0,
+            # Risk indicators (all consumed by MLEngine._extract_features)
+            "is_high_value": False, "is_cross_border": False,
+            "is_wire_transfer": False, "is_new_recipient": False,
+            "is_after_hours": False,
+            # Misc
+            "device_id": "", "risk_flags": [],
         }
         for rule in self._rules:
             if not rule.name:
@@ -150,8 +170,14 @@ class RuleEngine:
                 EvalWithCompoundTypes(names=dummy).eval(rule.condition)
             except InvalidExpression as exc:
                 errors.append(f"Rule '{rule.name}': invalid condition — {exc}")
-            except Exception:
-                pass
+            except Exception as exc:
+                # Previously `pass`, which let a rule that blew up during
+                # evaluation be reported as valid. Anything unexpected here is
+                # still a reason not to trust the rule.
+                errors.append(
+                    f"Rule '{rule.name}': condition could not be evaluated — "
+                    f"{type(exc).__name__}: {exc}"
+                )
         return errors
 
     def _safe_eval(self, condition: str, context: dict) -> bool:
