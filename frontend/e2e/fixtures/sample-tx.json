@@ -1,0 +1,17 @@
+{
+  "amount": 45000,
+  "currency": "USD",
+  "sender": "acct-e2e-sender",
+  "receiver": "acct-e2e-receiver",
+  "timestamp": 1754500000,
+  "latitude": 40.7128,
+  "longitude": -74.006,
+  "account_age_days": 12,
+  "transaction_count": 3,
+  "avg_transaction_amount": 800,
+  "is_high_value": true,
+  "is_cross_border": true,
+  "is_wire_transfer": true,
+  "is_new_recipient": true,
+  "is_after_hours": true
+}
